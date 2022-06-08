@@ -23,6 +23,18 @@ Key Components :
 - For the backend: AWS Step Functions, Amazon EFS,
   AWS Lambda, Amazon DynamoDB, Amazon SES, Amazon S3, AWS KMS, Amazon SNS, Amazon Cognito, AWS AppSync
 
+## Remove email restrictions
+
+By default, a new AWS account will be placed in the [Amazon SES](https://aws.amazon.com/ses/) sandbox
+ which enforces a set of [restrictions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
+
+To enable the egress app to send email notifications to signed-up users (information governance leads,
+ IT admins and researchers), an admin must manually add each user's email as a verified entity in SES. Following
+ that, the user must confirm the subscription using a link received in an email.
+
+To skip the need to manually add and verify each email address in Amazon SES, you should request production
+ access to SES by following these [instructions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
+
 ## Deployment
 
 **Time to deploy**: Approximately 20 minutes
@@ -64,13 +76,17 @@ cdkv1 deploy
 
 ## Solution Overview
 
-* [1. Egress Backend Stack](#1-egress-backend-stack)
-  * [1.1. Egress Request DynamoDB Table](#11-egress-request-dynamodb-table)
-  * [1.2. AppSync API](#12-appsync-api)
-  * [1.3. GraphQL Schema Change](#13-graphql-schema-change)
-  * [1.4. Egress Staging S3 Bucket](#14-egress-staging-s3-bucket)
-  * [1.5. Start Egress Workflow Lambda Function](#15-start-egress-workflow-lambda-function)
-  * [1.6. Egress Workflow Step Function](#16-egress-workflow-step-function)
+- [Egress App Backend](#egress-app-backend)
+  - [Remove email restrictions](#remove-email-restrictions)
+  - [Deployment](#deployment)
+  - [Solution Overview](#solution-overview)
+  - [1. Egress Backend Stack](#1-egress-backend-stack)
+    - [1.1. Egress Request DynamoDB Table](#11-egress-request-dynamodb-table)
+    - [1.2. AppSync API](#12-appsync-api)
+    - [1.3. GraphQL Schema Change](#13-graphql-schema-change)
+    - [1.4. Egress Staging S3 Bucket](#14-egress-staging-s3-bucket)
+    - [1.5. Start Egress Workflow Lambda Function](#15-start-egress-workflow-lambda-function)
+    - [1.6. Egress Workflow Step Function](#16-egress-workflow-step-function)
 
 The egress application backend is defined as a Python-based [CDK](https://aws.amazon.com/cdk/) (Cloud Development Kit)
  application. The app consists of one stack representing the infrastructure for the egress app backend.
@@ -102,9 +118,9 @@ This table is used to store egress requests as they are received from SWB. These
  and include the definition of an egress request and its attributes. Additionally, definitions of data queries
  and mutations (updates) are also included:
 
-* listRequests - Lists all egress requests (Query)
-* updateRequest - Updates a given request with approval status, justification, and approver name (Mutation)
-* downloadData - Generates a S3 presigned URL which will be used by the frontend to download data associated with the
+- listRequests - Lists all egress requests (Query)
+- updateRequest - Updates a given request with approval status, justification, and approver name (Mutation)
+- downloadData - Generates a S3 presigned URL which will be used by the frontend to download data associated with the
  request (Mutation)
 
 Appsync uses the schema in combination with resolvers
@@ -115,25 +131,25 @@ The Lambda code is defined in *egress_backend/lambda/egress_api* where *main.py*
  serves as the entry point. This script is called anytime the AppSync endpoint is called and is able to filter
  (switch cases) the request type and execute different scripts containing differing business logic.
 
-* **List Requests API**
-  * ***Request Parameters:*** None
-  * ***Response:*** List of egress request objects
-  * Calling the endpoint with the listRequests query will invoke the *list_request.py* script through *main.py*. This function
+- **List Requests API**
+  - ***Request Parameters:*** None
+  - ***Response:*** List of egress request objects
+  - Calling the endpoint with the listRequests query will invoke the *list_request.py* script through *main.py*. This function
     executes a table scan to retrieve all of the egress requests from the DynamoDB table.
 
-* **Update Requests API**
-  * ***Request Parameters:*** egress_request_id, workspace_id, download_count
-  * ***Response:*** String (Success message)
-  * Calling the endpoint with the updatesRequests mutation will invoke the *update_request.py* script through *main.py*.
+- **Update Requests API**
+  - ***Request Parameters:*** egress_request_id, workspace_id, download_count
+  - ***Response:*** String (Success message)
+  - Calling the endpoint with the updatesRequests mutation will invoke the *update_request.py* script through *main.py*.
     The function starts off by checking if the supplied request_id is valid by querying the database. After successful
     verification of the request, the supplied task token is used to resume the relevant egress workflow (StepFunctions)
     execution passing in an approval or rejection status. The supplied reason is used later in the workflow to update
     the request details in the database.
 
-* **Download Data API**
-  * ***Request Parameters:*** egress_request_id, status, download_count
-  * ***Response:*** String (S3 presigned URL)
-  * Calling the endpoint with the downloadData mutation will invoke the *download_data.py* script through *main.py*.
+- **Download Data API**
+  - ***Request Parameters:*** egress_request_id, status, download_count
+  - ***Response:*** String (S3 presigned URL)
+  - Calling the endpoint with the downloadData mutation will invoke the *download_data.py* script through *main.py*.
     The function first checks if the download_count exceeds a configurable parameter `max_downloads_allowed`
     (specified in *cdk.json*). If the max download count has not been exceeded, the script proceeds to construct
     the object key from the supplied parameters. If the file exists in the datalake bucket, a S3 presigned URL is
@@ -167,12 +183,13 @@ AWS Lambda function that is subscribed to a SWB-managed SNS topic in order to re
  new egress requests. This function invokes the step function that defines the egress approval workflow.
  It also feeds configuration parameters into the workflow which will
  be used at various points. Among the key values are:
-  * *egress_request_id*: Unique identifier for an egress request.
-  * *reviewer_list*: List of user groups (as defined in the IdP) that have approval responsibility.
+
+- *egress_request_id*: Unique identifier for an egress request.
+- *reviewer_list*: List of user groups (as defined in the IdP) that have approval responsibility.
   The list ordering should reflect the approval priority.
-  * *egress_app_url*: URL for the egress application. Used when sending the final decision
+- *egress_app_url*: URL for the egress application. Used when sending the final decision
   email to the requester.
-  * *tre_admin_email_address*: Email address for the TRE administrator(s) or administrator
+- *tre_admin_email_address*: Email address for the TRE administrator(s) or administrator
   group. Also used as the "From" email address for the final decision email. The email body
   also references this email address.
 
@@ -180,108 +197,109 @@ AWS Lambda function that is subscribed to a SWB-managed SNS topic in order to re
 
 ![Egress Workflow](images/Graph-EgressApp-StepFunctions.png)
 
-* **Save Request To DynamoDB:**
-  * Step Function task which uses direct integration with Amazon DynamoDB to write the request
+- **Save Request To DynamoDB:**
+  - Step Function task which uses direct integration with Amazon DynamoDB to write the request
   to the Egress Request DynamoDB table
-  * The status of the entry is set to ***PROCESSING*** to maintain consistency with the SWB
+  - The status of the entry is set to ***PROCESSING*** to maintain consistency with the SWB
   Egress store status update below
 
-* **Update Request in Egress Store DynamoDB (processing):**
-  * Step Function task which uses direct integration with Amazon DynamoDB to update the egress
+- **Update Request in Egress Store DynamoDB (processing):**
+  - Step Function task which uses direct integration with Amazon DynamoDB to update the egress
   store item status in the SWB DynamoDB
   table to ***PROCESSING***
-  * With this status in place, the researcher is not permitted to terminate the workspace
+  - With this status in place, the researcher is not permitted to terminate the workspace
   (& associated egress store) because there is a request in flight
 
-* **Copy Objects to Egress Staging:**
-  * Step Function task which uses an AWS Lambda function (`copy_egress_candidates_to_staging`) to:
-    * Retrieve the JSON version metadata file from the `egress_store_object_list_location` in the
+- **Copy Objects to Egress Staging:**
+  - Step Function task which uses an AWS Lambda function (`copy_egress_candidates_to_staging`) to:
+    - Retrieve the JSON version metadata file from the `egress_store_object_list_location` in the
     inbound SNS message. This file contains a list of candidate egress objects and their associated
     S3 Version IDs that relate to this particular egress request. This feature allows the linking between
     an egress request and a specific version of an object in the SWB egress store even if said object
     is modified multiple times
-    * Copy the candidate egress objects from the SWB Egress store location to the staging bucket.
+    - Copy the candidate egress objects from the SWB Egress store location to the staging bucket.
     The version ID specified in the JSON file above is specified in the copy command. This is the
     version that will be copied ***even if it is not the current version*** in the source egress
     store bucket
-    * Extract a list of distinct file types being staged. This list will be fed into the step
+    - Extract a list of distinct file types being staged. This list will be fed into the step
     function so that it can be included in notification alerts
 
-* **Notify Information Governance:**
-  * Step Function task which uses direct integration with Amazon SNS to:
-    * Publish a notification to the Information Governance SNS topic
-    * Format the notification to include:
-      * File types
-      * Egress Request ID
-      * Research Project
-      * Researcher Email
+- **Notify Information Governance:**
+  - Step Function task which uses direct integration with Amazon SNS to:
+    - Publish a notification to the Information Governance SNS topic
+    - Format the notification to include:
+      - File types
+      - Egress Request ID
+      - Research Project
+      - Researcher Email
 
-* **Information Governance Decision:**
-  * Step Function task which uses an AWS Lambda function (`update-egress-request-with-task-token-function`)
+- **Information Governance Decision:**
+  - Step Function task which uses an AWS Lambda function (`update-egress-request-with-task-token-function`)
   to write a step function task token as an attribute of the egress request item in the DynamoDB table
-  * The task pauses and waits for a callback which includes the token before it can resume execution
-  * Callback will be received via a GraphQL API call from the frontend which will be processed by the `egress-api-handler`
-  * Validation in the API will ensure that only the Information Governance role can update the request at this point in time
+  - The task pauses and waits for a callback which includes the token before it can resume execution
+  - Callback will be received via a GraphQL API call from the frontend which will be processed by the `egress-api-handler`
+  - Validation in the API will ensure that only the Information Governance role can update the request at this point in time
 
-* **Save Information Governance Decision:**
-  * Step Function task which uses direct integration with Amazon DynamoDB to update the Information Governance decision
+- **Save Information Governance Decision:**
+  - Step Function task which uses direct integration with Amazon DynamoDB to update the Information Governance decision
   in the DynamoDB table
-  * This task is triggered by the UpdateRequest API being invoked. The API invokes a Lambda function which uses
+  - This task is triggered by the UpdateRequest API being invoked. The API invokes a Lambda function which uses
   the task token previously
   retrieved (when requests were loaded in the frontend) to resume the step function execution
 
-* **Information Governance Approved?:**
-  * Step Function choice task which parses the status of the request as received from the frontend API call in the
+- **Information Governance Approved?:**
+  - Step Function choice task which parses the status of the request as received from the frontend API call in the
   previous task to determine if the request was ***APPROVED*** or ***REJECTED*** by Information Governance
 
-* **Delete Rejected Objects From Staging - IGLead:**
-  * When ***REJECTED*** by Information Governance, the Step Function task uses an AWS Lambda function (`handle_egress_rejection`)
+- **Delete Rejected Objects From Staging - IGLead:**
+  - When ***REJECTED*** by Information Governance, the Step Function task uses an AWS Lambda function (`handle_egress_rejection`)
   to delete staged objects from the Egress staging bucket (with the expectation that the researcher will review
   and submit a new egress request)
 
-* **Notify Research IT:**
-  * If the request is ***APPROVED***, control is passed to a Step Function task which uses direct integration with Amazon SNS to:
-    * Publish a notification to the Information Governance SNS topic
-    * Format the notification to include:
-      * File types
-      * Egress Request ID
-      * Research Project
-      * Researcher Email
-      * Information Governance Email
+- **Notify Research IT:**
+  - If the request is ***APPROVED***, control is passed to a Step Function
+    task which uses direct integration with Amazon SNS to:
+    - Publish a notification to the Information Governance SNS topic
+    - Format the notification to include:
+      - File types
+      - Egress Request ID
+      - Research Project
+      - Researcher Email
+      - Information Governance Email
 
-* **Research IT Decision:**
-  * Step Function task which uses an AWS Lambda function (`update-egress-request-with-task-token-function`)
+- **Research IT Decision:**
+  - Step Function task which uses an AWS Lambda function (`update-egress-request-with-task-token-function`)
   to write a step function task token as an attribute of the egress request item in the DynamoDB table
-  * The task pauses and waits for a callback which includes the token before it can resume execution
-  * Callback will be received via a GraphQL API call from the frontend which will be processed by the `egress-api-handler`
-  * Validation in the API will ensure that only the Research IT role can update the request at this point in time
+  - The task pauses and waits for a callback which includes the token before it can resume execution
+  - Callback will be received via a GraphQL API call from the frontend which will be processed by the `egress-api-handler`
+  - Validation in the API will ensure that only the Research IT role can update the request at this point in time
 
-* **Save Research IT Decision:**
-  * Step Function task which uses direct integration with Amazon DynamoDB to update the Research IT decision
+- **Save Research IT Decision:**
+  - Step Function task which uses direct integration with Amazon DynamoDB to update the Research IT decision
   in the DynamoDB table.
-  * This task is triggered by the UpdateRequest API being invoked. The API invokes a Lambda function which uses
+  - This task is triggered by the UpdateRequest API being invoked. The API invokes a Lambda function which uses
   the task token previously retrieved (when requests were loaded in the frontend) to resume the step
   function execution
 
-* **Research IT Approved?:**
-  * Step Function choice task which parses the status of the request as received from the frontend API call
+- **Research IT Approved?:**
+  - Step Function choice task which parses the status of the request as received from the frontend API call
   in the previous task to determine if the request was ***APPROVED*** or ***REJECTED*** by Research IT
 
-* **Delete Rejected Objects From Staging - RIT:**
-  * When ***REJECTED*** by Research IT, the Step Function task uses an AWS Lambda function (`handle_egress_rejection`)
+- **Delete Rejected Objects From Staging - RIT:**
+  - When ***REJECTED*** by Research IT, the Step Function task uses an AWS Lambda function (`handle_egress_rejection`)
   to delete staged objects from the Egress staging bucket (with the expectation that the researcher will review and
   submit a new egress request)
 
-* **Copy Approved Objects to Datalake:**
-  * If the request is ***APPROVED***, control is passed to a Step Function task which uses an AWS Lambda function
+- **Copy Approved Objects to Datalake:**
+  - If the request is ***APPROVED***, control is passed to a Step Function task which uses an AWS Lambda function
   (`copy_egress_candidates_to_datalake`) to:
-    * Download the approved egress objects unto an EFS file store that is attached to the Lambda function
-    * Create a zip file containing all the objects
-    * Upload the zip file to the datalake target S3 bucket
-    * Clean up all related data from both the egress staging bucket and the EFS
+    - Download the approved egress objects unto an EFS file store that is attached to the Lambda function
+    - Create a zip file containing all the objects
+    - Upload the zip file to the datalake target S3 bucket
+    - Clean up all related data from both the egress staging bucket and the EFS
 
-* **Update Request in Egress Store DynamoDB (status):**
-  * Step Function task which uses direct integration with Amazon DynamoDB to update the egress store item status in
+- **Update Request in Egress Store DynamoDB (status):**
+  - Step Function task which uses direct integration with Amazon DynamoDB to update the egress store item status in
   the SWB DynamoDB table as follows:
 
     | Egress App Status | SWB Egress Store Status |
@@ -289,13 +307,13 @@ AWS Lambda function that is subscribed to a SWB-managed SNS topic in order to re
     | APPROVED          |   PROCESSED             |
     | REJECTED          |   PENDING               |
 
-  * Setting the status to ***PROCESSED*** allows the researcher to terminate the research workspace and
+  - Setting the status to ***PROCESSED*** allows the researcher to terminate the research workspace and
   associated egress store
-  * Setting the status to ***PENDING*** allows the researcher to revise and resubmit the candidate egress data.
+  - Setting the status to ***PENDING*** allows the researcher to revise and resubmit the candidate egress data.
   They may also choose to terminate the research workspace and associated egress store at this stage.
   (They could not do so while the request was in a status of ***PROCESSING*** which is set when the egress
   request is first received by the step function.)
 
-* **Notify Requester:**
-  * Step Function task to send an email to the requester (e.g. researcher) with the Information Governance
+- **Notify Requester:**
+  - Step Function task to send an email to the requester (e.g. researcher) with the Information Governance
   lead in copy. The email marks an egress request review as complete and provides instructions with next steps.

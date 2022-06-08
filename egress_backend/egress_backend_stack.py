@@ -79,20 +79,6 @@ class EgressBackendStack(cdk.Stack):
             self.node.try_get_context(env_id).get("swb_egress_store_db_table"),
         )
 
-        # Import existing DataLake target Bucket
-        datalake_bucket = s3.Bucket.from_bucket_arn(
-            self,
-            "datalake-target-bucket",
-            self.node.try_get_context(env_id).get("datalake_target_bucket_arn"),
-        )
-
-        # Import existing DataLake target Bucket KMS key
-        datalake_bucket_kms_key = kms.Key.from_key_arn(
-            self,
-            "datalake-target-bucket-kms-key",
-            self.node.try_get_context(env_id).get("datalake_target_bucket_kms_arn"),
-        )
-
         # Variable for the project name
         tre_project = self.node.try_get_context(env_id)["resource_tags"]["ProjectName"]
 
@@ -299,6 +285,20 @@ class EgressBackendStack(cdk.Stack):
         # Add dataset tags to bucket
         for tag_key, tag_value in self.node.try_get_context(env_id)["dataset"].items():
             Tags.of(egress_staging_bucket).add(tag_key, tag_value)
+
+        # Add Egress Target Bucket
+        egress_target_bucket = s3.Bucket(
+            self,
+            "Egress-Target-Bucket",
+            encryption=s3.BucketEncryption.KMS,
+            encryption_key=s3_kms_key,
+            enforce_ssl=True,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            server_access_logs_bucket=access_logs_bucket,
+            server_access_logs_prefix="egress_target_logs",
+            versioned=True,
+            bucket_key_enabled=True,
+        )
 
         # Add Amplify App
         amplify_branch_name = "main"
@@ -869,8 +869,8 @@ class EgressBackendStack(cdk.Stack):
             memory_size=1024,
             environment={
                 "EGRESS_STAGING_BUCKET": egress_staging_bucket.bucket_name,
-                "EGRESS_DATALAKE_BUCKET": datalake_bucket.bucket_name,
-                "EGRESS_DATALAKE_BUCKET_KMS_KEY": datalake_bucket_kms_key.key_arn,
+                "EGRESS_DATALAKE_BUCKET": egress_target_bucket.bucket_name,
+                "EGRESS_DATALAKE_BUCKET_KMS_KEY": s3_kms_key.key_arn,
                 "EFS_MOUNT_PATH": efs_mount_path + "/",  # Need the extra slash
                 "REGION": self.region,
             },
@@ -881,15 +881,13 @@ class EgressBackendStack(cdk.Stack):
         )
 
         # Grant copy lambda function permission to write to datalake bucket
-        datalake_bucket.grant_put(copy_egress_candidates_to_datalake_function)
+        egress_target_bucket.grant_put(copy_egress_candidates_to_datalake_function)
 
         # Grant copy lambda function permission to use KMS key of the staging bucket
         s3_kms_key.grant_decrypt(copy_egress_candidates_to_datalake_function)
 
         # Grant copy lambda function permission to use KMS key of the datalake bucket
-        datalake_bucket_kms_key.grant_encrypt_decrypt(
-            copy_egress_candidates_to_datalake_function
-        )
+        s3_kms_key.grant_encrypt_decrypt(copy_egress_candidates_to_datalake_function)
 
         # Grant copy lambda function permission to read/delete from egress staging bucket
         egress_staging_bucket.grant_read(copy_egress_candidates_to_datalake_function)
@@ -1183,7 +1181,7 @@ class EgressBackendStack(cdk.Stack):
                 "TABLE": egress_requests_table.table_name,
                 "STEP_FUNCTION_ARN": data_egress_step_function.state_machine_arn,
                 "REGION": self.region,
-                "DATALAKE_BUCKET": datalake_bucket.bucket_name,
+                "DATALAKE_BUCKET": egress_target_bucket.bucket_name,
                 "REVIEWER_LIST": json.dumps(
                     self.node.try_get_context(env_id).get("egress_reviewer_roles")
                 ),
@@ -1194,10 +1192,10 @@ class EgressBackendStack(cdk.Stack):
         )
 
         # Grant the api lambda permission to access the datalake bucket
-        datalake_bucket.grant_read(egress_api_handler)
+        egress_target_bucket.grant_read(egress_api_handler)
 
         # Grant api lambda function permission to use KMS key of the datalake bucket
-        datalake_bucket_kms_key.grant_decrypt(egress_api_handler)
+        s3_kms_key.grant_decrypt(egress_api_handler)
 
         # Grant the api lambda permission to access the DynamoDB table
         egress_requests_table.grant_read_write_data(egress_api_handler)
@@ -1671,4 +1669,11 @@ class EgressBackendStack(cdk.Stack):
             "EgressWebAppS3BucketName",
             value=egress_webapp_bucket.bucket_name,
             description="The name for the S3 bucket created to host the packaged frontend app.",
+        )
+
+        cdk.CfnOutput(
+            self,
+            "EgressWebAppTargetS3BucketName",
+            value=egress_target_bucket.bucket_name,
+            description="The name for the S3 bucket to store the final egress data.",
         )
