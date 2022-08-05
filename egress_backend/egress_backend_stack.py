@@ -286,6 +286,20 @@ class EgressBackendStack(cdk.Stack):
         for tag_key, tag_value in self.node.try_get_context(env_id)["dataset"].items():
             Tags.of(egress_staging_bucket).add(tag_key, tag_value)
 
+        # Add Egress Target Bucket
+        egress_target_bucket = s3.Bucket(
+            self,
+            "Egress-Target-Bucket",
+            encryption=s3.BucketEncryption.KMS,
+            encryption_key=s3_kms_key,
+                enforce_ssl=True,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            server_access_logs_bucket=access_logs_bucket,
+            server_access_logs_prefix="egress_target_logs",
+            versioned=True,
+            bucket_key_enabled=True,
+        )
+ 
         # Add Amplify App
         amplify_branch_name = "main"
         amplify_app = amplify.App(self, "EgressFrontendApp")
@@ -1682,4 +1696,11 @@ class EgressBackendStack(cdk.Stack):
             "EgressWebAppS3BucketName",
             value=egress_webapp_bucket.bucket_name,
             description="The name for the S3 bucket created to host the packaged frontend app.",
+        )
+
+        cdk.CfnOutput(
+            self,
+            "EgressWebAppTargetS3BucketName",
+            value=egress_target_bucket.bucket_name,
+            description="The name for the S3 bucket to store the final egress data.",
         )
