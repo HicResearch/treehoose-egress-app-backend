@@ -45,6 +45,7 @@ type Request @aws_auth(cognito_groups: ["InformationGovernance","TREAdmin"]) {
 	current_reviewer_group: String
 	s3_staging_object_metadata_version: String
 	download_count: String
+	is_single_approval_enabled: String
 }
 
 input UpdateRequestInput {

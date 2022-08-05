@@ -286,20 +286,6 @@ class EgressBackendStack(cdk.Stack):
         for tag_key, tag_value in self.node.try_get_context(env_id)["dataset"].items():
             Tags.of(egress_staging_bucket).add(tag_key, tag_value)
 
-        # Add Egress Target Bucket
-        egress_target_bucket = s3.Bucket(
-            self,
-            "Egress-Target-Bucket",
-            encryption=s3.BucketEncryption.KMS,
-            encryption_key=s3_kms_key,
-            enforce_ssl=True,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            server_access_logs_bucket=access_logs_bucket,
-            server_access_logs_prefix="egress_target_logs",
-            versioned=True,
-            bucket_key_enabled=True,
-        )
-
         # Add Amplify App
         amplify_branch_name = "main"
         amplify_app = amplify.App(self, "EgressFrontendApp")
@@ -429,6 +415,9 @@ class EgressBackendStack(cdk.Stack):
                 ),
                 "s3_swb_object_metadata_version": sfn_tasks.DynamoAttributeValue.from_string(
                     sfn.JsonPath.string_at("$.ver")
+                ),
+                "is_single_approval_enabled": sfn_tasks.DynamoAttributeValue.from_string(
+                    sfn.JsonPath.string_at("$.is_single_approval_enabled")
                 ),
             },
             table=egress_requests_table,
@@ -894,9 +883,19 @@ class EgressBackendStack(cdk.Stack):
         egress_staging_bucket.grant_delete(copy_egress_candidates_to_datalake_function)
 
         # Define egress copy_to_staging Step Function task
-        copy_to_datalake_task = sfn_tasks.LambdaInvoke(
+        copy_to_datalake_task_rit = sfn_tasks.LambdaInvoke(
             self,
-            "Copy Approved Objects To Datalake",
+            "Copy Approved Objects To Datalake - RIT",
+            lambda_function=copy_egress_candidates_to_datalake_function,
+            result_selector={
+                "transferred_to_datalake": sfn.JsonPath.string_at("$.Payload")
+            },
+            result_path="$.copy_to_datalake_result",
+        )
+
+        copy_to_datalake_task_ig = sfn_tasks.LambdaInvoke(
+            self,
+            "Copy Approved Objects To Datalake - IGLead",
             lambda_function=copy_egress_candidates_to_datalake_function,
             result_selector={
                 "transferred_to_datalake": sfn.JsonPath.string_at("$.Payload")
@@ -1059,6 +1058,12 @@ class EgressBackendStack(cdk.Stack):
             iam_action="ses:sendEmail",
         )
 
+        is_single_approval_enabled = (
+            self.node.try_get_context(env_id).get("enable_single_approval")
+            if self.node.try_get_context(env_id).get("enable_single_approval")
+            else "false"
+        )
+
         # Define Egress Workflow Step Function
         workflow_log_group = logs.LogGroup(self, "ApprovalWorkflowLogs")
         data_egress_step_function = sfn.StateMachine(
@@ -1073,8 +1078,13 @@ class EgressBackendStack(cdk.Stack):
             .next(ig_update_request_in_db_task)
             .next(
                 check_ig_approval.when(
-                    sfn.Condition.string_matches(
-                        "$.information_governance.result.egress_status", "*APPROVED"
+                    sfn.Condition.and_(
+                        sfn.Condition.string_matches(
+                            "$.information_governance.result.egress_status", "*APPROVED"
+                        ),
+                        sfn.Condition.string_matches(
+                            "$.is_single_approval_enabled", "false"
+                        ),
                     ),
                     notify_rit_reviewer_task.next(rit_decision_task)
                     .next(rit_update_request_in_db_task)
@@ -1084,7 +1094,7 @@ class EgressBackendStack(cdk.Stack):
                                 "$.research_it.result.rit_reviewer_2_decision",
                                 "APPROVED",
                             ),
-                            copy_to_datalake_task.next(
+                            copy_to_datalake_task_rit.next(
                                 update_request_in_egress_store_db_rit_task
                             ),
                         ).when(
@@ -1096,6 +1106,19 @@ class EgressBackendStack(cdk.Stack):
                                 update_request_in_egress_store_db_rit_task
                             ),
                         )
+                    ),
+                )
+                .when(
+                    sfn.Condition.and_(
+                        sfn.Condition.string_matches(
+                            "$.information_governance.result.egress_status", "*APPROVED"
+                        ),
+                        sfn.Condition.string_matches(
+                            "$.is_single_approval_enabled", "true"
+                        ),
+                    ),
+                    copy_to_datalake_task_ig.next(
+                        update_request_in_egress_store_db_iglead_task
                     ),
                 )
                 .when(
@@ -1154,6 +1177,7 @@ class EgressBackendStack(cdk.Stack):
                 "EGRESS_APP_URL": egress_app_url,
                 "EGRESS_APP_ADMIN_EMAIL": tre_admin_email_address,
                 "REGION": self.region,
+                "IS_SINGLE_APPROVAL_ENABLED": is_single_approval_enabled,
             },
         )
 
@@ -1614,27 +1638,16 @@ class EgressBackendStack(cdk.Stack):
             value=egress_app_url,
             description="The URL for the Egress App.",
         )
+        for idx, role in enumerate(
+            self.node.try_get_context(env_id).get("egress_reviewer_roles")
+        ):
 
-        cdk.CfnOutput(
-            self,
-            "EgressReviewerRole1",
-            value=self.node.try_get_context(env_id).get("egress_reviewer_roles")[0],
-            description="The Cognito group name for reviewer type 1.",
-        )
-
-        cdk.CfnOutput(
-            self,
-            "EgressReviewerRole2",
-            value=self.node.try_get_context(env_id).get("egress_reviewer_roles")[1],
-            description="The Cognito group name for reviewer type 2.",
-        )
-
-        cdk.CfnOutput(
-            self,
-            "MaxDownloadsAllowed",
-            value=self.node.try_get_context(env_id).get("max_downloads_allowed"),
-            description="Max downloads allowed parameter provided.",
-        )
+            cdk.CfnOutput(
+                self,
+                f"EgressReviewerRole{idx+1}",
+                value=role,
+                description=f"The Cognito group name for reviewer type {role}.",
+            )
 
         cdk.CfnOutput(
             self,
@@ -1669,11 +1682,4 @@ class EgressBackendStack(cdk.Stack):
             "EgressWebAppS3BucketName",
             value=egress_webapp_bucket.bucket_name,
             description="The name for the S3 bucket created to host the packaged frontend app.",
-        )
-
-        cdk.CfnOutput(
-            self,
-            "EgressWebAppTargetS3BucketName",
-            value=egress_target_bucket.bucket_name,
-            description="The name for the S3 bucket to store the final egress data.",
         )

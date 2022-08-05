@@ -23,18 +23,6 @@ Key Components :
 - For the backend: AWS Step Functions, Amazon EFS,
   AWS Lambda, Amazon DynamoDB, Amazon SES, Amazon S3, AWS KMS, Amazon SNS, Amazon Cognito, AWS AppSync
 
-## Remove email restrictions
-
-By default, a new AWS account will be placed in the [Amazon SES](https://aws.amazon.com/ses/) sandbox
- which enforces a set of [restrictions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
-
-To enable the egress app to send email notifications to signed-up users (information governance leads,
- IT admins and researchers), an admin must manually add each user's email as a verified entity in SES. Following
- that, the user must confirm the subscription using a link received in an email.
-
-To skip the need to manually add and verify each email address in Amazon SES, you should request production
- access to SES by following these [instructions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
-
 ## Deployment
 
 **Time to deploy**: Approximately 20 minutes
@@ -62,6 +50,10 @@ cd secure-egress-backend
 |datalake_target_bucket_kms_arn|Provide resource created in Step 3 - KMS Key: TRE Target Bucket KMS Key |Check [AWS CloudFormation](https://eu-west-2.console.aws.amazon.com/cloudformation/home?region=eu-west-2#/) *Resources* tab for *Stack* "TREDataLake1" or go to [AWS KMS Keys](https://eu-west-2.console.aws.amazon.com/kms/home?region=eu-west-2#/kms/keys)|
 |cognito_userpool_domain|Provide name for a new Amazon Cognito domain to be created|To view resources created after deployment of this CDK stack, go to service [Amazon Cognito](https://eu-west-2.console.aws.amazon.com/cognito/home?region=eu-west-2)|
 |tre_admin_email_address|Provide a TRE admin email address that will need to be verified after deployment|To view verified identities after deployment of this CDK stack, go to service [Amazon SES](https://eu-west-2.console.aws.amazon.com/ses/home?region=eu-west-2#/verified-identities)|
+|enable_single_approval|Flag that enables just a single stage approval. Accepts string value. Should be set to `"true"` when just one approver needs to approve egress request. Should be set to `"false"` when two approvers are required to approve egress request||`cdk.json`|
+
+> Note: changing the value for `enable_single_approval` for existing deployment should be done after ensuring there are
+> no egress requests in progress.
 
 - [ ] Run the following commands to create an isolated Python environment and deploy the CDK backend stack:
 
@@ -195,7 +187,7 @@ AWS Lambda function that is subscribed to a SWB-managed SNS topic in order to re
 
 ### 1.6. Egress Workflow Step Function
 
-![Egress Workflow](images/Graph-EgressApp-StepFunctions.png)
+![Egress Workflow](images/Graph-EgressApp-StepFunctions.svg)
 
 - **Save Request To DynamoDB:**
   - Step Function task which uses direct integration with Amazon DynamoDB to write the request
@@ -250,6 +242,8 @@ AWS Lambda function that is subscribed to a SWB-managed SNS topic in order to re
 - **Information Governance Approved?:**
   - Step Function choice task which parses the status of the request as received from the frontend API call in the
   previous task to determine if the request was ***APPROVED*** or ***REJECTED*** by Information Governance
+  - At this step the Step Function also checks if any additional approvals are required based on the value of `is_single_approval_enabled`. If no further approvals are required the appropriate data operation is done based on the decision and an email is sent to the requester.
+  If an additional approval is required Research IT approval workflow is followed.
 
 - **Delete Rejected Objects From Staging - IGLead:**
   - When ***REJECTED*** by Information Governance, the Step Function task uses an AWS Lambda function (`handle_egress_rejection`)

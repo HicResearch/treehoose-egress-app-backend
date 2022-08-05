@@ -21,6 +21,7 @@ egress_workflow_step_fn_arn = os.environ["STEP_FUNCTION_ARN"]
 reviewer_list = os.environ["REVIEWER_LIST"]
 egress_app_url = os.environ["EGRESS_APP_URL"]
 tre_admin_email_address = os.environ["EGRESS_APP_ADMIN_EMAIL"]
+is_single_approval_enabled = os.environ["IS_SINGLE_APPROVAL_ENABLED"]
 
 
 @metrics.log_metrics()
@@ -44,6 +45,7 @@ def start_egress_workflow(message):
     message["reviewer_list"] = json.loads(reviewer_list)
     message["egress_app_url"] = egress_app_url
     message["tre_admin_email_address"] = tre_admin_email_address
+    message["is_single_approval_enabled"] = is_single_approval_enabled
 
     logger.info(
         "Starting workflow with egress request ID: " + message["egress_request_id"]
