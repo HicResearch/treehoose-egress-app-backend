@@ -1704,3 +1704,17 @@ class EgressBackendStack(cdk.Stack):
             value=egress_target_bucket.bucket_name,
             description="The name for the S3 bucket to store the final egress data.",
         )
+
+        cdk.CfnOutput(
+            self,
+            "EgressStagingS3BucketName",
+            value=egress_staging_bucket.bucket_name,
+            description="The name for the egress staging S3 bucket to review files for egress approvals",
+        )
+
+        cdk.CfnOutput(
+            self,
+            "EgressStagingS3BucketKeyArn",
+            value=s3_kms_key.key_arn,
+            description="KMS Key ARN for egress staging s3 bucket",
+        )
