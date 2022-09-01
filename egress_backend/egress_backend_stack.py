@@ -282,6 +282,66 @@ class EgressBackendStack(cdk.Stack):
             server_access_logs_prefix="egress_staging_logs",
         )
 
+        egress_staging_bucket.add_to_resource_policy(
+            permission=iam.PolicyStatement(
+                sid="Delegate fine grained permissions to access points",
+                effect=iam.Effect.ALLOW,
+                principals=[iam.AnyPrincipal()],
+                actions=["s3:*"],
+                resources=[
+                    f"{egress_staging_bucket.bucket_arn}/*",
+                    f"{egress_staging_bucket.bucket_arn}",
+                ],
+                conditions={
+                    "StringEquals": {
+                        "s3:DataAccessPointAccount": self.node.try_get_context(
+                            env_id
+                        ).get("ig_workspaces_account")
+                    }
+                },
+            )
+        )
+
+        egress_staging_bucket_access_point = s3.CfnAccessPoint(
+            self,
+            "rEgressStagingBucketAccessPoint",
+            bucket=egress_staging_bucket.bucket_name,
+            name="egress-staging-bucket-access-point",
+            public_access_block_configuration=s3.CfnAccessPoint.PublicAccessBlockConfigurationProperty(
+                block_public_acls=True,
+                block_public_policy=True,
+                ignore_public_acls=True,
+                restrict_public_buckets=True,
+            ),
+        )
+
+        egress_staging_bucket_access_point.policy = iam.PolicyDocument(
+            statements=[
+                iam.PolicyStatement(
+                    sid="S3ExternalReadAccess",
+                    effect=iam.Effect.ALLOW,
+                    principals=[iam.AccountPrincipal(self.node.try_get_context(
+                                env_id
+                            ).get("ig_workspaces_account"))],
+                    actions=["s3:GetObject"],
+                    resources=[
+                        f"arn:aws:s3:{self.region}:{self.account}:accesspoint/egress-staging-bucket-access-point/object/*",
+                    ],
+                ),
+                iam.PolicyStatement(
+                    sid="ListBucketForEgressData",
+                    effect=iam.Effect.ALLOW,
+                    principals=[iam.AccountPrincipal(self.node.try_get_context(
+                                env_id
+                            ).get("ig_workspaces_account"))],
+                    actions=["s3:ListBucket"],
+                    resources=[
+                        f"arn:aws:s3:{self.region}:{self.account}:accesspoint/egress-staging-bucket-access-point",
+                    ],
+                ),
+            ]
+        )
+
         # Add dataset tags to bucket
         for tag_key, tag_value in self.node.try_get_context(env_id)["dataset"].items():
             Tags.of(egress_staging_bucket).add(tag_key, tag_value)
@@ -292,14 +352,14 @@ class EgressBackendStack(cdk.Stack):
             "Egress-Target-Bucket",
             encryption=s3.BucketEncryption.KMS,
             encryption_key=s3_kms_key,
-                enforce_ssl=True,
+            enforce_ssl=True,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             server_access_logs_bucket=access_logs_bucket,
             server_access_logs_prefix="egress_target_logs",
             versioned=True,
             bucket_key_enabled=True,
         )
- 
+
         # Add Amplify App
         amplify_branch_name = "main"
         amplify_app = amplify.App(self, "EgressFrontendApp")
@@ -1717,4 +1777,11 @@ class EgressBackendStack(cdk.Stack):
             "EgressStagingS3BucketKeyArn",
             value=s3_kms_key.key_arn,
             description="KMS Key ARN for egress staging s3 bucket",
+        )
+
+        cdk.CfnOutput(
+            self,
+            "EgressStagingS3BucketAccessPointArn",
+            value=egress_staging_bucket_access_point.attr_arn,
+            description="Egress staging bucket access point arn",
         )

@@ -51,6 +51,7 @@ cd secure-egress-backend
 |cognito_userpool_domain|Provide name for a new Amazon Cognito domain to be created|To view resources created after deployment of this CDK stack, go to service [Amazon Cognito](https://eu-west-2.console.aws.amazon.com/cognito/home?region=eu-west-2)|
 |tre_admin_email_address|Provide a TRE admin email address that will need to be verified after deployment|To view verified identities after deployment of this CDK stack, go to service [Amazon SES](https://eu-west-2.console.aws.amazon.com/ses/home?region=eu-west-2#/verified-identities)|
 |enable_single_approval|Flag that enables just a single stage approval. Accepts string value. Should be set to `"true"` when just one approver needs to approve egress request. Should be set to `"false"` when two approvers are required to approve egress request||`cdk.json`|
+|ig_workspaces_account|Add the account number in which IG lead will spin up workspace to review egress data||
 
 > Note: changing the value for `enable_single_approval` for existing deployment should be done after ensuring there are
 > no egress requests in progress.
