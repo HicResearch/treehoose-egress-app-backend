@@ -313,9 +313,7 @@ class EgressBackendStack(cdk.Stack):
                 ],
                 conditions={
                     "StringEquals": {
-                        "s3:DataAccessPointAccount": self.node.try_get_context(
-                            env_id
-                        ).get("ig_workspaces_account")
+                        "s3:DataAccessPointAccount": self.account
                     }
                 },
             )
