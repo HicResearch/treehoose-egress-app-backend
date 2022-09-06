@@ -123,10 +123,8 @@ class EgressBackendStack(cdk.Stack):
                     "*",
                 ],
                 actions=[
-                    "kms:GenerateDataKey*",
+                    "kms:GenerateDataKey",
                     "kms:Decrypt",
-                    "kms:Encrypt",
-                    "kms:DescribeKey"
                 ],
             )
         )
