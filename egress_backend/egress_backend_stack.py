@@ -110,6 +110,27 @@ class EgressBackendStack(cdk.Stack):
             self, "Egress-S3-Key", alias="alias/Egress-S3-Key", enable_key_rotation=True
         )
 
+        s3_kms_key.add_to_resource_policy(
+            iam.PolicyStatement(
+                sid="AllowAccessForIGWorkspaces",
+                effect=iam.Effect.ALLOW,
+                principals=[
+                    iam.AccountPrincipal(self.node.try_get_context(
+                                env_id
+                            ).get("ig_workspaces_account")),
+                ],
+                resources=[
+                    "*",
+                ],
+                actions=[
+                    "kms:GenerateDataKey*",
+                    "kms:Decrypt",
+                    "kms:Encrypt",
+                    "kms:DescribeKey"
+                ],
+            )
+        )
+
         dynamodb_kms_key = kms.Key(
             self,
             "Egress-DynamoDB-Key",
