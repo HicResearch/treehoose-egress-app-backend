@@ -759,6 +759,7 @@ class EgressBackendStack(cdk.Stack):
             ),
             message=sfn.TaskInput.from_object(
                 {
+                    "Workspace ID": sfn.JsonPath.string_at("$.workspace_id"),
                     "Egress Request ID": sfn.JsonPath.string_at("$.egress_request_id"),
                     "Researcher Email": sfn.JsonPath.string_at("$.created_by_email"),
                     "Egress Object File Types": sfn.JsonPath.string_at(
@@ -778,6 +779,7 @@ class EgressBackendStack(cdk.Stack):
             ),
             message=sfn.TaskInput.from_object(
                 {
+                    "Workspace ID": sfn.JsonPath.string_at("$.workspace_id"),
                     "Egress Request ID": sfn.JsonPath.string_at("$.egress_request_id"),
                     "Researcher Email": sfn.JsonPath.string_at("$.created_by_email"),
                     "Information Governance": sfn.JsonPath.string_at(
