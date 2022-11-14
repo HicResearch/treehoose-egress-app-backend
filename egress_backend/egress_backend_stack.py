@@ -115,9 +115,9 @@ class EgressBackendStack(cdk.Stack):
                 sid="AllowAccessForIGWorkspaces",
                 effect=iam.Effect.ALLOW,
                 principals=[
-                    iam.AccountPrincipal(self.node.try_get_context(
-                                env_id
-                            ).get("ig_workspaces_account")),
+                    iam.AccountPrincipal(
+                        self.node.try_get_context(env_id).get("ig_workspaces_account")
+                    ),
                 ],
                 resources=[
                     "*",
@@ -312,9 +312,7 @@ class EgressBackendStack(cdk.Stack):
                     f"{egress_staging_bucket.bucket_arn}",
                 ],
                 conditions={
-                    "StringEquals": {
-                        "s3:DataAccessPointAccount": self.account
-                    }
+                    "StringEquals": {"s3:DataAccessPointAccount": self.account}
                 },
             )
         )
@@ -337,9 +335,13 @@ class EgressBackendStack(cdk.Stack):
                 iam.PolicyStatement(
                     sid="S3ExternalReadAccess",
                     effect=iam.Effect.ALLOW,
-                    principals=[iam.AccountPrincipal(self.node.try_get_context(
-                                env_id
-                            ).get("ig_workspaces_account"))],
+                    principals=[
+                        iam.AccountPrincipal(
+                            self.node.try_get_context(env_id).get(
+                                "ig_workspaces_account"
+                            )
+                        )
+                    ],
                     actions=["s3:GetObject"],
                     resources=[
                         f"arn:aws:s3:{self.region}:{self.account}:accesspoint/egress-staging-bucket-access-point/object/*",
@@ -348,9 +350,13 @@ class EgressBackendStack(cdk.Stack):
                 iam.PolicyStatement(
                     sid="ListBucketForEgressData",
                     effect=iam.Effect.ALLOW,
-                    principals=[iam.AccountPrincipal(self.node.try_get_context(
-                                env_id
-                            ).get("ig_workspaces_account"))],
+                    principals=[
+                        iam.AccountPrincipal(
+                            self.node.try_get_context(env_id).get(
+                                "ig_workspaces_account"
+                            )
+                        )
+                    ],
                     actions=["s3:ListBucket"],
                     resources=[
                         f"arn:aws:s3:{self.region}:{self.account}:accesspoint/egress-staging-bucket-access-point",

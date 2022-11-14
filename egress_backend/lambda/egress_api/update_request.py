@@ -103,7 +103,7 @@ def determine_status(
         elif (
             inbound_reviewer_1_decision == "APPROVED"
             and is_single_approval_enabled == "false"
-        ):            
+        ):
             egress_status = "IGAPPROVED"
             swb_status = "PROCESSING"
         else:
