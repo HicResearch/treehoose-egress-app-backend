@@ -148,7 +148,9 @@ class EgressBackendStack(cdk.Stack):
             env_id=env_id,
             configuration_set_name=ses_config_set_name,
         )
-        ses_monitoring_sns_topic = sns.Topic(self, "SES-Monitoring-Notifications", master_key=sns_kms_key)
+        ses_monitoring_sns_topic = sns.Topic(
+            self, "SES-Monitoring-Notifications", master_key=sns_kms_key
+        )
 
         sns_configuration_set_destination = (
             EmailConfigurationSetEventDestinationCustomResource(
