@@ -1,6 +1,6 @@
 repos:
   -   repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: v4.1.0
+      rev: v4.3.0
       hooks:
       -   id: trailing-whitespace
       -   id: end-of-file-fixer
@@ -24,7 +24,7 @@ repos:
         language: script
         name: git-secrets-scan
   - repo: https://github.com/markdownlint/markdownlint
-    rev: v0.11.0
+    rev: v0.12.0
     hooks:
       - id: markdownlint
         name: Markdownlint
@@ -37,7 +37,7 @@ repos:
           - "-s"
           - "mdl_style.rb"
   -   repo: https://github.com/awslabs/cfn-python-lint
-      rev: v0.59.1
+      rev: v0.71.1
       hooks:
       -   id: cfn-python-lint
           files: src/.*(Cfn)\.(yml|yaml)$
@@ -49,13 +49,13 @@ repos:
         args: ["--profile", "black"]
         verbose: true
   - repo: https://github.com/psf/black
-    rev: 21.12b0 # Replace with any tag/version: https://github.com/psf/black/tags
+    rev: 22.10.0 # Replace with any tag/version: https://github.com/psf/black/tags
     hooks:
       - id: black
         language_version: python3 # Should be a command that runs python3.7+
         verbose: true
   - repo: https://gitlab.com/pycqa/flake8
-    rev: 4.0.1
+    rev: 3.9.2
     hooks:
       - id: flake8
         args: ['--max-line-length=150', '--ignore=E203', '--max-cognitive-complexity=14', '--max-expression-complexity=9' ]
@@ -63,7 +63,7 @@ repos:
           flake8-bugbear, # Detect potential bugs
           flake8-builtins, # Check for built-ins being used as variables
           flake8-cognitive-complexity, # Check max function complexity
-          flake8-comprehensions, # Suggestions for better list/set/dict comprehensions 
+          flake8-comprehensions, # Suggestions for better list/set/dict comprehensions
           flake8-eradicate, # Find dead/commented out code
           flake8-expression-complexity, # Check max expression complexity
           flake8-fixme, # Check for FIXME, TODO, and XXX left in comments
@@ -78,12 +78,12 @@ repos:
         ]
         verbose: true
   - repo: https://github.com/Lucas-C/pre-commit-hooks-safety
-    rev: v1.2.2
+    rev: v1.3.0
     hooks:
     - id: python-safety-dependencies-check
       verbose: true
   - repo: https://github.com/markdownlint/markdownlint
-    rev: v0.11.0
+    rev: v0.12.0
     hooks:
       - id: markdownlint
         name: Markdownlint
@@ -96,7 +96,7 @@ repos:
           - "-s"
           - "mdl_style.rb"
   - repo: https://github.com/PyCQA/bandit
-    rev: '1.7.1'
+    rev: '1.7.4'
     hooks:
       - id: bandit
         entry: bandit
