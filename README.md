@@ -1,4 +1,68 @@
-# Egress App Back-End
+# Egress App Backend
+
+This add-on provides a data egress approval workflow
+for researchers to take out data from TRE with the permission of multiple parties
+(data manager, research IT, etc.).
+The add-on is hosted as a web application supported by
+backend infrastructure. Each add-on installation is tied
+to a specific TRE project.
+
+The add-on provides a streamlined
+process for securely egressing data from the TRE environment
+while keeping the TRE admins and Data auditors in complete
+control of the process.
+
+All data egress requests and any actions performed on those
+are recorded for Audit.
+
+![Egress App Workflow](images/egress-app-workflow.png)
+
+Key Components :
+
+- For the UI: AWS Amplify
+- For the backend: AWS Step Functions, Amazon EFS,
+  AWS Lambda, Amazon DynamoDB, Amazon SES, Amazon S3, AWS KMS, Amazon SNS, Amazon Cognito, AWS AppSync
+
+## Deployment
+
+**Time to deploy**: Approximately 20 minutes
+
+Log in to the [AWS Management Console](https://console.aws.amazon.com/) using Admin privileges.
+
+- [ ] Download the source code repo using below command and change directory
+
+```console
+git clone https://gitlab.aws.dev/aws-wwps-uk-proserve-edu/trusted-research-environment/opensource/secure-egress-backend.git
+cd secure-egress-backend
+```
+
+- [ ] Edit file *cdk.json* in the `secure-egress-backend` directory (Step 1C). Change the following required
+ parameters for the CDK backend stack:
+
+|Parameter Name|Description|Location|
+|:-----------------|:-----------|:-------------|
+|swb_egress_store_arn|Provide resource created in Step 2 - S3 Bucket: Egress Store Bucket Arn |Check [AWS CloudFormation](https://eu-west-2.console.aws.amazon.com/cloudformation/home?region=eu-west-2#/) *Resources* tab for *Stack* "treprod-ldn-pj1-backend" or go to [Amazon S3 Buckets](https://s3.console.aws.amazon.com/s3/buckets?region=eu-west-2)|
+|swb_egress_notification_topic|Provide resource created in Step 2 - SNS Topic: Egress Notification Topic Arn |Check [AWS CloudFormation](https://eu-west-2.console.aws.amazon.com/cloudformation/home?region=eu-west-2#/) *Resources* tab for *Stack* "treprod-ldn-pj1-backend" or go to [Amazon SNS Topics](https://eu-west-2.console.aws.amazon.com/sns/v3/home?region=eu-west-2#/topics)|
+|swb_egress_notification_bucket_arn|Provide resource created in Step 2 - S3 Bucket: Egress Notification Bucket Arn |Check [AWS CloudFormation](https://eu-west-2.console.aws.amazon.com/cloudformation/home?region=eu-west-2#/) *Resources* tab for *Stack* "treprod-ldn-pj1-backend" or go to [Amazon S3 Buckets](https://s3.console.aws.amazon.com/s3/buckets?region=eu-west-2)|
+|swb_egress_notification_bucket_kms_arn|Provide resource created in Step 2 - KMS Key: Egress Store Encryption Key Arn |Check [AWS CloudFormation](https://eu-west-2.console.aws.amazon.com/cloudformation/home?region=eu-west-2#/) *Resources* tab for *Stack* "treprod-ldn-pj1-backend" or go to [AWS KMS Keys](https://eu-west-2.console.aws.amazon.com/kms/home?region=eu-west-2#/kms/keys)|
+|swb_egress_store_db_table|Provide resource created in Step 2 - DynamoDB Table: Egress Store Table Arn |Check [AWS CloudFormation](https://eu-west-2.console.aws.amazon.com/cloudformation/home?region=eu-west-2#/) *Resources* tab for *Stack* "treprod-ldn-pj1-backend" or go to [Amazon DynamoDB Tables](https://eu-west-2.console.aws.amazon.com/dynamodbv2/home?region=eu-west-2#tables)|
+|datalake_target_bucket_arn|Provide resource created in Step 3 - S3 Bucket: TRE Target Bucket |Check [AWS CloudFormation](https://eu-west-2.console.aws.amazon.com/cloudformation/home?region=eu-west-2#/) *Resources* tab for *Stack* "TREDataLake1" or go to [Amazon S3 Buckets](https://s3.console.aws.amazon.com/s3/buckets?region=eu-west-2)|
+|datalake_target_bucket_kms_arn|Provide resource created in Step 3 - KMS Key: TRE Target Bucket KMS Key |Check [AWS CloudFormation](https://eu-west-2.console.aws.amazon.com/cloudformation/home?region=eu-west-2#/) *Resources* tab for *Stack* "TREDataLake1" or go to [AWS KMS Keys](https://eu-west-2.console.aws.amazon.com/kms/home?region=eu-west-2#/kms/keys)|
+|cognito_userpool_domain|Provide name for a new Amazon Cognito domain to be created|To view resources created after deployment of this CDK stack, go to service [Amazon Cognito](https://eu-west-2.console.aws.amazon.com/cognito/home?region=eu-west-2)|
+|tre_admin_email_address|Provide a TRE admin email address that will need to be verified after deployment|To view verified identities after deployment of this CDK stack, go to service [Amazon SES](https://eu-west-2.console.aws.amazon.com/ses/home?region=eu-west-2#/verified-identities)|
+
+- [ ] Run the following commands to create an isolated Python environment and deploy the CDK backend stack:
+
+```bash
+alias cdkv1="npx aws-cdk@1.154"
+python3 -m venv .venv
+source .venv/bin/activate
+pip3 install -r requirements.txt
+cdkv1 bootstrap aws://<<AWS_ACCOUNT_ID>>/<<AWS_REGION>> # TRE account ID / eu-west-2
+cdkv1 deploy
+```
+
+## Solution Overview
 
 * [1. Egress Backend Stack](#1-egress-backend-stack)
   * [1.1. Egress Request DynamoDB Table](#11-egress-request-dynamodb-table)
@@ -13,7 +77,7 @@ The egress application backend is defined as a Python-based [CDK](https://aws.am
 
 ## 1. Egress Backend Stack
 
-The *src/components/egress_app_backend/egress_backend/egress_backend_stack.py* defines the resources that make up
+The *egress_backend_stack.py* defines the resources that make up
  the egress approval workflow. These include the series of Lambda functions in the StepFunctions
  (Egress workflow) and the Amplify app hosting the user interface (Egress Web App).
 
@@ -34,7 +98,7 @@ This table is used to store egress requests as they are received from SWB. These
  more. [GraphQL](https://graphql.org/) is a query language for the API, and a server-side runtime for executing
  queries using a type system defined for your data.
 
- The data types are defined in *src/components/egress_app_backend/egress_backend/graphql/schema.graphql*
+ The data types are defined in *egress_backend/graphql/schema.graphql*
  and include the definition of an egress request and its attributes. Additionally, definitions of data queries
  and mutations (updates) are also included:
 
@@ -44,10 +108,10 @@ This table is used to store egress requests as they are received from SWB. These
  request (Mutation)
 
 Appsync uses the schema in combination with resolvers
- (*src/components/egress_app_backend/egress_backend/egress_backend_stack.py*),
+ (*egress_backend/egress_backend_stack.py*),
  which provides integration with a single Lambda (Egress-API) executing the business logic for the API.
 
-The Lambda code is defined in *src/components/egress_app_backend/egress_backend/lambda/egress_api* where *main.py*
+The Lambda code is defined in *egress_backend/lambda/egress_api* where *main.py*
  serves as the entry point. This script is called anytime the AppSync endpoint is called and is able to filter
  (switch cases) the request type and execute different scripts containing differing business logic.
 
@@ -83,11 +147,11 @@ The Lambda code is defined in *src/components/egress_app_backend/egress_backend/
 
 >Note: This requires installation of Amplify CLI - instructions can be found [here](https://docs.amplify.aws/cli/start/install)
 
-Any changes to the GraphQL schema should be made inside *src/components/egress_app_backend/egress_backend/graphql/schema.graphql*
+Any changes to the GraphQL schema should be made inside *egress_backend/graphql/schema.graphql*
  in the backend.
- This file should then be copied/overwritten to this location *src/components/egress_app_frontend/src/graphql/schema.graphql*
+ This file should then be copied/overwritten to this location *secure-egress-frontend/src/graphql/schema.graphql*
  in the client.
- Then run the command `amplify add codegen` in *src/components/egress_app_frontend/src/graphql* to generate the updated models
+ Then run the command `amplify add codegen` in *secure-egress-frontend/src/graphql* to generate the updated models
  for the client to use. You should see updated *queries.js* and *mutations.js* files in the same location.
 
 ### 1.4. Egress Staging S3 Bucket
@@ -114,7 +178,7 @@ AWS Lambda function that is subscribed to a SWB-managed SNS topic in order to re
 
 ### 1.6. Egress Workflow Step Function
 
-![Egress Workflow](../../../res/images/Graph-EgressApp-StepFunctions.png)
+![Egress Workflow](images/Graph-EgressApp-StepFunctions.png)
 
 * **Save Request To DynamoDB:**
   * Step Function task which uses direct integration with Amazon DynamoDB to write the request
