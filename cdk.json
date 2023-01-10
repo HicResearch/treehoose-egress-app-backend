@@ -29,7 +29,8 @@
       "max_downloads_allowed": "1",
       "tre_admin_email_address": "<<TRE_ADMIN_EMAIL_TO_BE_VERIFIED>>",
       "enable_single_approval": "<<true or false>>",
-      "ig_workspaces_account": "<<IG_WORKSPACE_AWS_ACCOUNT_NUMBER>>"
+      "ig_workspaces_account": "",
+      "use_s3_access_points": "false"
     },
     "base": {
       "ses_configuration_set_name": "egress_app_configuration_set_"

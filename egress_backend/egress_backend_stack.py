@@ -36,6 +36,25 @@ from components.email_identity.email_identity_verification_cr import (
 )
 
 
+def from_bool_string(s, rtype):
+    """
+    Returns:
+        rtype=str: 'true' or 'false'
+        type=bool: true or false
+    """
+    if rtype in (str, bool):
+        raise ValueError(f"Invalid return type: {rtype}")
+    if s.lower() == "true":
+        if rtype == str:
+            return "true"
+        return True
+    if s.lower() == "false":
+        if rtype == str:
+            return "false"
+        return False
+    raise ValueError(f"Invalid boolean string: {s}")
+
+
 class EgressBackendStack(cdk.Stack):
     def __init__(
         self, scope: cdk.Construct, construct_id: str, env_id: str, **kwargs
@@ -79,6 +98,39 @@ class EgressBackendStack(cdk.Stack):
             self.node.try_get_context(env_id).get("swb_egress_store_db_table"),
         )
 
+        datalake_target_bucket_arn = self.node.try_get_context(env_id).get(
+            "datalake_target_bucket_arn"
+        )
+        datalake_target_bucket_kms_arn = self.node.try_get_context(env_id).get(
+            "datalake_target_bucket_kms_arn"
+        )
+
+        if datalake_target_bucket_arn and datalake_target_bucket_kms_arn:
+            datalake_target_provided = True
+        elif not datalake_target_bucket_arn and not datalake_target_bucket_kms_arn:
+            datalake_target_provided = False
+        else:
+            raise ValueError(
+                "Either both or neither of datalake_target_bucket_arn and datalake_target_bucket_kms_arn required"
+            )
+
+        if datalake_target_provided:
+            # Import existing DataLake target Bucket
+            # datalake_bucket = s3.Bucket.from_bucket_arn(
+            egress_target_bucket = s3.Bucket.from_bucket_arn(
+                self,
+                "datalake-target-bucket",
+                self.node.try_get_context(env_id).get("datalake_target_bucket_arn"),
+            )
+
+            # Import existing DataLake target Bucket KMS key
+            # datalake_bucket_kms_key = kms.Key.from_key_arn(
+            egress_target_bucket_kms_key = kms.Key.from_key_arn(
+                self,
+                "datalake-target-bucket-kms-key",
+                self.node.try_get_context(env_id).get("datalake_target_bucket_kms_arn"),
+            )
+
         # Variable for the project name
         tre_project = self.node.try_get_context(env_id)["resource_tags"]["ProjectName"]
 
@@ -102,6 +154,16 @@ class EgressBackendStack(cdk.Stack):
             "tre_admin_email_address"
         )
 
+        # Optional AWS Account ID that the IG will use to look at egress data requests
+        ig_workspaces_account = self.node.try_get_context(env_id).get(
+            "ig_workspaces_account"
+        )
+
+        # Customised SWB with access points
+        use_s3_access_points = from_bool_string(
+            self.node.try_get_context(env_id).get("use_s3_access_points"), bool
+        )
+
         # The code that defines your stack goes here
         this_dir = path.dirname(__file__)
 
@@ -110,24 +172,23 @@ class EgressBackendStack(cdk.Stack):
             self, "Egress-S3-Key", alias="alias/Egress-S3-Key", enable_key_rotation=True
         )
 
-        s3_kms_key.add_to_resource_policy(
-            iam.PolicyStatement(
-                sid="AllowAccessForIGWorkspaces",
-                effect=iam.Effect.ALLOW,
-                principals=[
-                    iam.AccountPrincipal(
-                        self.node.try_get_context(env_id).get("ig_workspaces_account")
-                    ),
-                ],
-                resources=[
-                    "*",
-                ],
-                actions=[
-                    "kms:GenerateDataKey",
-                    "kms:Decrypt",
-                ],
+        if ig_workspaces_account:
+            s3_kms_key.add_to_resource_policy(
+                iam.PolicyStatement(
+                    sid="AllowAccessForIGWorkspaces",
+                    effect=iam.Effect.ALLOW,
+                    principals=[
+                        iam.AccountPrincipal(ig_workspaces_account),
+                    ],
+                    resources=[
+                        "*",
+                    ],
+                    actions=[
+                        "kms:GenerateDataKey",
+                        "kms:Decrypt",
+                    ],
+                )
             )
-        )
 
         dynamodb_kms_key = kms.Key(
             self,
@@ -301,87 +362,78 @@ class EgressBackendStack(cdk.Stack):
             server_access_logs_prefix="egress_staging_logs",
         )
 
-        egress_staging_bucket.add_to_resource_policy(
-            permission=iam.PolicyStatement(
-                sid="Delegate fine grained permissions to access points",
-                effect=iam.Effect.ALLOW,
-                principals=[iam.AnyPrincipal()],
-                actions=["s3:*"],
-                resources=[
-                    f"{egress_staging_bucket.bucket_arn}/*",
-                    f"{egress_staging_bucket.bucket_arn}",
-                ],
-                conditions={
-                    "StringEquals": {"s3:DataAccessPointAccount": self.account}
-                },
+        if use_s3_access_points:
+            egress_staging_bucket.add_to_resource_policy(
+                permission=iam.PolicyStatement(
+                    sid="Delegate fine grained permissions to access points",
+                    effect=iam.Effect.ALLOW,
+                    principals=[iam.AnyPrincipal()],
+                    actions=["s3:*"],
+                    resources=[
+                        f"{egress_staging_bucket.bucket_arn}/*",
+                        f"{egress_staging_bucket.bucket_arn}",
+                    ],
+                    conditions={
+                        "StringEquals": {"s3:DataAccessPointAccount": self.account}
+                    },
+                )
             )
-        )
 
-        egress_staging_bucket_access_point = s3.CfnAccessPoint(
-            self,
-            "rEgressStagingBucketAccessPoint",
-            bucket=egress_staging_bucket.bucket_name,
-            name="egress-staging-bucket-access-point",
-            public_access_block_configuration=s3.CfnAccessPoint.PublicAccessBlockConfigurationProperty(
-                block_public_acls=True,
-                block_public_policy=True,
-                ignore_public_acls=True,
-                restrict_public_buckets=True,
-            ),
-        )
+            egress_staging_bucket_access_point = s3.CfnAccessPoint(
+                self,
+                "rEgressStagingBucketAccessPoint",
+                bucket=egress_staging_bucket.bucket_name,
+                name="egress-staging-bucket-access-point",
+                public_access_block_configuration=s3.CfnAccessPoint.PublicAccessBlockConfigurationProperty(
+                    block_public_acls=True,
+                    block_public_policy=True,
+                    ignore_public_acls=True,
+                    restrict_public_buckets=True,
+                ),
+            )
 
-        egress_staging_bucket_access_point.policy = iam.PolicyDocument(
-            statements=[
-                iam.PolicyStatement(
-                    sid="S3ExternalReadAccess",
-                    effect=iam.Effect.ALLOW,
-                    principals=[
-                        iam.AccountPrincipal(
-                            self.node.try_get_context(env_id).get(
-                                "ig_workspaces_account"
-                            )
-                        )
-                    ],
-                    actions=["s3:GetObject"],
-                    resources=[
-                        f"arn:aws:s3:{self.region}:{self.account}:accesspoint/egress-staging-bucket-access-point/object/*",
-                    ],
-                ),
-                iam.PolicyStatement(
-                    sid="ListBucketForEgressData",
-                    effect=iam.Effect.ALLOW,
-                    principals=[
-                        iam.AccountPrincipal(
-                            self.node.try_get_context(env_id).get(
-                                "ig_workspaces_account"
-                            )
-                        )
-                    ],
-                    actions=["s3:ListBucket"],
-                    resources=[
-                        f"arn:aws:s3:{self.region}:{self.account}:accesspoint/egress-staging-bucket-access-point",
-                    ],
-                ),
-            ]
-        )
+            egress_staging_bucket_access_point.policy = iam.PolicyDocument(
+                statements=[
+                    iam.PolicyStatement(
+                        sid="S3ExternalReadAccess",
+                        effect=iam.Effect.ALLOW,
+                        principals=[iam.AccountPrincipal(ig_workspaces_account)],
+                        actions=["s3:GetObject"],
+                        resources=[
+                            f"arn:aws:s3:{self.region}:{self.account}:accesspoint/egress-staging-bucket-access-point/object/*",
+                        ],
+                    ),
+                    iam.PolicyStatement(
+                        sid="ListBucketForEgressData",
+                        effect=iam.Effect.ALLOW,
+                        principals=[iam.AccountPrincipal(ig_workspaces_account)],
+                        actions=["s3:ListBucket"],
+                        resources=[
+                            f"arn:aws:s3:{self.region}:{self.account}:accesspoint/egress-staging-bucket-access-point",
+                        ],
+                    ),
+                ]
+            )
 
         # Add dataset tags to bucket
         for tag_key, tag_value in self.node.try_get_context(env_id)["dataset"].items():
             Tags.of(egress_staging_bucket).add(tag_key, tag_value)
 
-        # Add Egress Target Bucket
-        egress_target_bucket = s3.Bucket(
-            self,
-            "Egress-Target-Bucket",
-            encryption=s3.BucketEncryption.KMS,
-            encryption_key=s3_kms_key,
-            enforce_ssl=True,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            server_access_logs_bucket=access_logs_bucket,
-            server_access_logs_prefix="egress_target_logs",
-            versioned=True,
-            bucket_key_enabled=True,
-        )
+        if not datalake_target_provided:
+            # Add Egress Target Bucket
+            egress_target_bucket = s3.Bucket(
+                self,
+                "Egress-Target-Bucket",
+                encryption=s3.BucketEncryption.KMS,
+                encryption_key=s3_kms_key,
+                enforce_ssl=True,
+                block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+                server_access_logs_bucket=access_logs_bucket,
+                server_access_logs_prefix="egress_target_logs",
+                versioned=True,
+                bucket_key_enabled=True,
+            )
+            egress_target_bucket_kms_key = s3_kms_key
 
         # Add Amplify App
         amplify_branch_name = "main"
@@ -958,7 +1010,7 @@ class EgressBackendStack(cdk.Stack):
             environment={
                 "EGRESS_STAGING_BUCKET": egress_staging_bucket.bucket_name,
                 "EGRESS_DATALAKE_BUCKET": egress_target_bucket.bucket_name,
-                "EGRESS_DATALAKE_BUCKET_KMS_KEY": s3_kms_key.key_arn,
+                "EGRESS_DATALAKE_BUCKET_KMS_KEY": egress_target_bucket_kms_key.key_arn,
                 "EFS_MOUNT_PATH": efs_mount_path + "/",  # Need the extra slash
                 "REGION": self.region,
             },
@@ -975,7 +1027,9 @@ class EgressBackendStack(cdk.Stack):
         s3_kms_key.grant_decrypt(copy_egress_candidates_to_datalake_function)
 
         # Grant copy lambda function permission to use KMS key of the datalake bucket
-        s3_kms_key.grant_encrypt_decrypt(copy_egress_candidates_to_datalake_function)
+        egress_target_bucket_kms_key.grant_encrypt_decrypt(
+            copy_egress_candidates_to_datalake_function
+        )
 
         # Grant copy lambda function permission to read/delete from egress staging bucket
         egress_staging_bucket.grant_read(copy_egress_candidates_to_datalake_function)
@@ -1157,10 +1211,9 @@ class EgressBackendStack(cdk.Stack):
             iam_action="ses:sendEmail",
         )
 
-        is_single_approval_enabled = (
-            self.node.try_get_context(env_id).get("enable_single_approval")
-            if self.node.try_get_context(env_id).get("enable_single_approval")
-            else "false"
+        # This is passed around the lambda so must be a string
+        is_single_approval_enabled = from_bool_string(
+            self.node.try_get_context(env_id).get("enable_single_approval"), str
         )
 
         # Define Egress Workflow Step Function
@@ -1737,6 +1790,14 @@ class EgressBackendStack(cdk.Stack):
             value=egress_app_url,
             description="The URL for the Egress App.",
         )
+
+        cdk.CfnOutput(
+            self,
+            "MaxDownloadsAllowed",
+            value=self.node.try_get_context(env_id).get("max_downloads_allowed"),
+            description="Max downloads allowed parameter provided.",
+        )
+
         for idx, role in enumerate(
             self.node.try_get_context(env_id).get("egress_reviewer_roles")
         ):
@@ -1804,9 +1865,10 @@ class EgressBackendStack(cdk.Stack):
             description="KMS Key ARN for egress staging s3 bucket",
         )
 
-        cdk.CfnOutput(
-            self,
-            "EgressStagingS3BucketAccessPointArn",
-            value=egress_staging_bucket_access_point.attr_arn,
-            description="Egress staging bucket access point arn",
-        )
+        if use_s3_access_points:
+            cdk.CfnOutput(
+                self,
+                "EgressStagingS3BucketAccessPointArn",
+                value=egress_staging_bucket_access_point.attr_arn,
+                description="Egress staging bucket access point arn",
+            )
