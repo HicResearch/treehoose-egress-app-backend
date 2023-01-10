@@ -1364,6 +1364,9 @@ class EgressBackendStack(cdk.Stack):
                 "MAX_DOWNLOADS_ALLOWED": self.node.try_get_context(env_id).get(
                     "max_downloads_allowed"
                 ),
+                "DOWNLOAD_EXPIRY_SECONDS": self.node.try_get_context(env_id).get(
+                    "download_expiry_seconds"
+                ),
             },
         )
 
