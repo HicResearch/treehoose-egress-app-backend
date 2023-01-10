@@ -1,0 +1,27 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install git-secrets
+        run: |
+          git clone --depth 1 https://github.com/awslabs/git-secrets
+          cd git-secrets
+          sudo make install
+
+      # ref: https://github.com/pre-commit/action
+      # Run "pre-commit run --all-files"
+      - uses: pre-commit/action@v3.0.0
