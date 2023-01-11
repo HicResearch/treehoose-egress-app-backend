@@ -42,7 +42,7 @@ def from_bool_string(s, rtype):
         rtype=str: 'true' or 'false'
         type=bool: true or false
     """
-    if rtype in (str, bool):
+    if rtype not in (str, bool):
         raise ValueError(f"Invalid return type: {rtype}")
     if s.lower() == "true":
         if rtype == str:
@@ -1374,7 +1374,7 @@ class EgressBackendStack(cdk.Stack):
         egress_target_bucket.grant_read(egress_api_handler)
 
         # Grant api lambda function permission to use KMS key of the datalake bucket
-        s3_kms_key.grant_decrypt(egress_api_handler)
+        egress_target_bucket_kms_key.grant_decrypt(egress_api_handler)
 
         # Grant the api lambda permission to access the DynamoDB table
         egress_requests_table.grant_read_write_data(egress_api_handler)
