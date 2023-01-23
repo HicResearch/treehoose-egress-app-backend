@@ -31,6 +31,7 @@ ddb = boto3.resource("dynamodb")
 bucket = os.environ["DATALAKE_BUCKET"]
 table = os.environ["TABLE"]
 max_downloads_allowed = os.environ["MAX_DOWNLOADS_ALLOWED"]
+download_expiry_seconds = os.environ["DOWNLOAD_EXPIRY_SECONDS"]
 
 
 @tracer.capture_lambda_handler
@@ -65,7 +66,7 @@ def download_data(arguments: str, context: Any):
             # Generate presign URL
             presign = s3_client.generate_presigned_url(
                 "get_object",
-                ExpiresIn=3600,
+                ExpiresIn=int(download_expiry_seconds),
                 Params={"Bucket": bucket, "Key": object_key},
             )
             logger.debug("Presign URL generated: %s", presign)

@@ -55,7 +55,11 @@ def update_request(arguments: str, context: Any):
 
     # Determine egress request status and SWB status
     statuses = determine_status(
-        egress_arguments=arguments, reviewer_usergroup=usergroup
+        egress_arguments=arguments,
+        reviewer_usergroup=usergroup,
+        is_single_approval_enabled=egress_details["Items"][0][
+            "is_single_approval_enabled"
+        ],
     )
 
     # Append appropriate fields to arguments for SFN audit
@@ -78,7 +82,9 @@ def update_request(arguments: str, context: Any):
 
 
 # TO-DO: Inject Environment variables for reviewer group names
-def determine_status(egress_arguments: Any, reviewer_usergroup: str):
+def determine_status(
+    egress_arguments: Any, reviewer_usergroup: str, is_single_approval_enabled: str
+):
     global egress_status
     global swb_status
     reviewer_list_groups = json.loads(reviewer_list)
@@ -88,7 +94,16 @@ def determine_status(egress_arguments: Any, reviewer_usergroup: str):
             "ig_reviewer_1_decision"
         ]
 
-        if inbound_reviewer_1_decision == "APPROVED":
+        if (
+            inbound_reviewer_1_decision == "APPROVED"
+            and is_single_approval_enabled == "true"
+        ):
+            egress_status = "IGAPPROVED"
+            swb_status = "PROCESSED"
+        elif (
+            inbound_reviewer_1_decision == "APPROVED"
+            and is_single_approval_enabled == "false"
+        ):
             egress_status = "IGAPPROVED"
             swb_status = "PROCESSING"
         else:
