@@ -25,7 +25,6 @@ reviewer_list = os.environ["REVIEWER_LIST"]
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
 def update_request(arguments: str, context: Any):
-
     # Get the task token and id from the request
     inbound_egress_request_id = arguments["request"]["egress_request_id"]
     inbound_task_token = arguments["request"]["task_token"]
@@ -68,7 +67,6 @@ def update_request(arguments: str, context: Any):
 
     # Only proceed with workflow if request and reviewer is valid
     if request_valid and reviewer_valid:
-
         step_fn_client.send_task_success(
             taskToken=arguments["request"]["task_token"], output=json.dumps(arguments)
         )
@@ -154,34 +152,29 @@ def retrieve_request_details(request_id: str):
         raise Exception(
             f"No matching egress request found for egress request: {request_id}"
         )
-    else:
-        return response
+    return response
 
 
 # Check if reviewer is valid by matching the current reviewer group field in the DB to the incoming usergroup
 def is_reviewer_valid(request_id: str, reviewer_usergroup: str, egress_request: Any):
     current_reviewer_group = egress_request["Items"][0]["current_reviewer_group"]
-    if current_reviewer_group == reviewer_usergroup:
-        logger.info(
-            "Reviewer is in current reviewer group: %s and is valid",
-            current_reviewer_group,
-        )
-        return True
-    else:
+    if current_reviewer_group != reviewer_usergroup:
         logger.error(
             "Egress request: %s found but reviewer is not valid and not found in the current reviewer group: %s",
             request_id,
             current_reviewer_group,
         )
         raise Exception("You are not authorised to update this request at this time")
+    logger.info(
+        "Reviewer is in current reviewer group: %s and is valid",
+        current_reviewer_group,
+    )
+    return True
 
 
 # Check if SFN task token is valid by matching the task token field in the DB to the incoming task token
 def is_request_valid(request_id: str, task_token: str, egress_request: Any):
-    if egress_request["Items"][0]["task_token"] == task_token:
-        logger.info("Egress request ID and task token is valid")
-        return True
-    else:
+    if egress_request["Items"][0]["task_token"] != task_token:
         logger.error(
             "Egress request: %s found but task token %s is not valid",
             request_id,
@@ -190,3 +183,5 @@ def is_request_valid(request_id: str, task_token: str, egress_request: Any):
         raise Exception(
             "Another user may have updated this request. Please refresh to get the latest data"
         )
+    logger.info("Egress request ID and task token is valid")
+    return True

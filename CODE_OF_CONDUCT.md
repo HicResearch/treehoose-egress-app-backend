@@ -28,6 +28,7 @@ Disrespectful and unacceptable behaviors include, but are not limited to:
 
 **Enforcement and Reporting Code of Conduct Issues.** Instances of abusive, harassing, or otherwise
 unacceptable behavior may be reported by contacting `TODO`.
-All complaints will be reviewed and investigated and will result in a response that is deemed necessary and appropriate to the circumstances.
+All complaints will be reviewed and investigated and will
+result in a response that is deemed necessary and appropriate to the circumstances.
 
 **Attribution**. This code of conduct is based on the template established by the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).

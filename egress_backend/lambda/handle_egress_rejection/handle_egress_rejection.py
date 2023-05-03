@@ -25,8 +25,8 @@ def handler(event, context):
 
     egress_request_id = event["egress_request_id"]
 
-    logger.info("Rejecting request with egress request ID: " + egress_request_id)
-    logger.debug("Staging bucket: " + egress_staging_bucket)
+    logger.info("Rejecting request with egress request ID: %s", egress_request_id)
+    logger.debug("Staging bucket: %s", egress_staging_bucket)
 
     response = delete_staged_objects(
         source_bucket=egress_staging_bucket,
@@ -45,9 +45,8 @@ def delete_staged_objects(
     get_objects_list(source_bucket, workspace_id, object_list, egress_request_id)
     if object_list:
         return delete_objects(object_list, source_bucket)
-    else:
-        logger.warn("No objects were found in the source bucket")
-        return False
+    logger.warning("No objects were found in the source bucket")
+    return False
 
 
 ####################################################################
@@ -75,14 +74,12 @@ def get_objects_list(bucket, workspace_id, object_list, egress_request_id):
     for page in pages:
         for obj in page["Contents"]:
             object_k = obj["Key"]
-            if object_k.endswith("/"):
+            if not object_k.endswith("/"):
                 # this is not an object
-                continue
-            else:
                 object_list.append(object_k)
 
     logger.info("Retrieved list of objects")
-    logger.debug("Object list: ", object_list)
+    logger.debug("Object list: %s", object_list)
     return object_list
 
 

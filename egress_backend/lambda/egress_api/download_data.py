@@ -37,7 +37,6 @@ download_expiry_seconds = os.environ["DOWNLOAD_EXPIRY_SECONDS"]
 @tracer.capture_lambda_handler
 @logger.inject_lambda_context(log_event=True)
 def download_data(arguments: str, context: Any):
-
     try:
         # Static filename
         file = "egress_data.zip"
@@ -55,13 +54,12 @@ def download_data(arguments: str, context: Any):
 
         # If downloads are allowed
         if int(inbound_download_count) < int(max_downloads_allowed):
-
             # Construct object key from request fields
             object_key = f"{top_level_prefix}/{inbound_workspace_id}/{inbound_egress_request_id}/{file}"
 
             # Check if file exists in bucket
             head_obj_response = s3_client.head_object(Bucket=bucket, Key=object_key)
-            logger.debug("HEAD OBJECT RESPONSE: " + str(head_obj_response))
+            logger.debug("HEAD OBJECT RESPONSE: %s", str(head_obj_response))
 
             # Generate presign URL
             presign = s3_client.generate_presigned_url(
@@ -81,9 +79,8 @@ def download_data(arguments: str, context: Any):
             return {"presign_url": presign}
 
         # If data has been downloaded before
-        else:
-            response = "Download limit exceeded. Please contact an administrator"
-            logger.warn(response)
+        response = "Download limit exceeded. Please contact an administrator"
+        logger.warning(response)
     except ClientError as e:
         response = "Error from lambda_handler: " + e.response["Error"]["Message"]
         logger.error(e.response["Error"]["Message"])

@@ -29,12 +29,12 @@ def handler(event, context):
     ver_object_list_location = event["egress_store_object_list_location"]
 
     logger.info(
-        "Starting copy to staging bucket with egress request ID: " + egress_request_id
+        "Starting copy to staging bucket with egress request ID: %s", egress_request_id
     )
 
-    logger.debug("Egress Store Bucket: " + s3_egress_store_bucket)
-    logger.debug("Staging bucket: " + target_bucket)
-    logger.debug("Version metadata file location: " + ver_object_list_location)
+    logger.debug("Egress Store Bucket: %s", s3_egress_store_bucket)
+    logger.debug("Staging bucket: %s", target_bucket)
+    logger.debug("Version metadata file location: %s", ver_object_list_location)
 
     ver_object_list = fetch_object_version(ver_object_list_location)
 
@@ -80,7 +80,7 @@ def copy_files_to_egress_staging(
             egress_request_id,
         )
     else:
-        logger.warn("No objects were found in the source bucket")
+        logger.warning("No objects were found in the source bucket")
 
 
 ####################################################################
@@ -106,10 +106,7 @@ def get_objects_list(bucket, prefix, object_list):
     for page in pages:
         for obj in page["Contents"]:
             object_k = obj["Key"]
-            if object_k.endswith("/"):
-                # this is not an object
-                continue
-            else:
+            if not object_k.endswith("/"):
                 object_list.append(object_k)
 
     logger.info("Retrieved list of objects")
@@ -192,5 +189,4 @@ def get_file_extension(path: str):
     split = path.split(".")
     if len(split) > 1:
         return split[-1]
-    else:
-        return ""
+    return ""

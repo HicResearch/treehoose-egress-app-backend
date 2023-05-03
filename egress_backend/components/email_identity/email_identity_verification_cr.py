@@ -5,16 +5,16 @@
 
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_logs as logs
-from aws_cdk import core as cdk
 from aws_cdk.custom_resources import (
     AwsCustomResource,
     AwsCustomResourcePolicy,
     AwsSdkCall,
     PhysicalResourceId,
 )
+from constructs import Construct
 
 
-class EmailIdentityVerificationCustomResource(cdk.Construct):
+class EmailIdentityVerificationCustomResource(Construct):
     """Construct to trigger a verification of an email identity. Uses AWSCustomResource internally
     :param account_id -- The AWS account number being deployed to
     :param region -- The AWS region being deployed to
@@ -25,7 +25,7 @@ class EmailIdentityVerificationCustomResource(cdk.Construct):
 
     def __init__(
         self,
-        scope: cdk.Construct,
+        scope: Construct,
         id: str,  # noqa A002 default cdk construct
         account_id: str,
         region: str,
@@ -70,7 +70,6 @@ class EmailIdentityVerificationCustomResource(cdk.Construct):
         )
 
     def create(self, ses_sender_email, configuration_set_name):
-
         create_params = {
             "EmailIdentity": ses_sender_email,
             "ConfigurationSetName": configuration_set_name,
@@ -84,7 +83,6 @@ class EmailIdentityVerificationCustomResource(cdk.Construct):
         )
 
     def delete(self, ses_sender_email):
-
         delete_params = {"EmailIdentity": ses_sender_email}
 
         return AwsSdkCall(

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
-# (c) 2022 Amazon Web Services, Inc. or its affiliates. All Rights Reserved.
+# (c) 2023 Amazon Web Services, Inc. or its affiliates. All Rights Reserved.
 # This AWS Content is provided subject to the terms of the AWS Customer
 # Agreement available at https://aws.amazon.com/agreement or other written
 # agreement between Customer and Amazon Web Services, Inc.
 
-from aws_cdk import core as cdk
-from aws_cdk.core import Aspects, Tags
+from aws_cdk import App, Aspects, Tags
 from cdk_nag import AwsSolutionsChecks
-from egress_backend_stack import EgressBackendStack
+
+from egress_backend.egress_backend_stack import EgressBackendStack
 
 ENVIRONMENT_TYPE = "Prod"
 
-app = cdk.App()
+app = App()
 
 egress_backend_stack = EgressBackendStack(
     app, "EgressAppBackend", env_id=ENVIRONMENT_TYPE

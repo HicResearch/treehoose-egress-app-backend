@@ -63,7 +63,7 @@ Pay attention to any automated CI failures reported in the pull request, and sta
 #### Pull Request Checklist
 
 - [ ] Testing
-  - Unit test added (prefer not to modify an existing test, otherwise,
+- Unit test added (prefer not to modify an existing test, otherwise,
     it's probably a breaking change)
 - [ ] Docs
   - **README**: README updated if necessary

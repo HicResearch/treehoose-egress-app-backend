@@ -31,11 +31,11 @@ def handler(event, context):
     egress_request_id = event["egress_request_id"]
 
     logger.info(
-        "Starting copy to datalake bucket with egress request ID: " + egress_request_id
+        "Starting copy to datalake bucket with egress request ID: %s", egress_request_id
     )
 
-    logger.debug("Staging bucket: " + source_bucket)
-    logger.debug("Datalake bucket: " + target_bucket)
+    logger.debug("Staging bucket: %s", source_bucket)
+    logger.debug("Datalake bucket: %s", target_bucket)
 
     s3_prefix = f"{workspace_id}/{egress_request_id}"
 
@@ -54,7 +54,7 @@ def copy_files_to_egress_datalake(source_bucket: str, s3_prefix: str):
         delete_staged_objects(object_list, source_bucket)
         delete_efs_objects(downloaded_list)
     else:
-        logger.warn("No objects were found in the source bucket")
+        logger.warning("No objects were found in the source bucket")
 
 
 ####################################################################
@@ -80,14 +80,11 @@ def get_objects_list(bucket, prefix, object_list):
     for page in pages:
         for obj in page["Contents"]:
             object_k = obj["Key"]
-            if object_k.endswith("/"):
-                # this is not an object
-                continue
-            else:
+            if not object_k.endswith("/"):
                 object_list.append(object_k)
 
     logger.info("Retrieved list of objects")
-    logger.debug("Object list: " + str(object_list))
+    logger.debug("Object list: %s", str(object_list))
     return object_list
 
 
@@ -96,7 +93,6 @@ def get_objects_list(bucket, prefix, object_list):
 # zip objects in temp dir and upload to datalake bucket
 ####################################################################
 def zip_and_upload(downloaded_list, target_bucket, s3_prefix):
-
     # Static filename and top level prefix
     file_name = "egress_data.zip"
     top_level_prefix = "approved_egress"
@@ -106,7 +102,7 @@ def zip_and_upload(downloaded_list, target_bucket, s3_prefix):
         mode="w+b", suffix=".zip", dir=efs_mount_path, delete=True
     ) as f, ZipFile(f.name, "w", compression=ZIP_DEFLATED, allowZip64=True) as ziph:
         for _counter, object_f in enumerate(downloaded_list, start=1):
-            logger.debug("WRITING FILE: " + object_f)
+            logger.debug("WRITING FILE: %s", object_f)
             # Write the file to the zip archive specifying the file name too instead of using the entire file path
             ziph.write(filename=object_f, arcname=get_file_name(object_f))
 
