@@ -911,6 +911,7 @@ class EgressBackendStack(Stack):
                 {
                     "Egress Request ID": sfn.JsonPath.string_at("$.egress_request_id"),
                     "Researcher Email": sfn.JsonPath.string_at("$.created_by_email"),
+                    "Workspace ID": sfn.JsonPath.string_at("$.workspace_id"),
                     "Egress Object File Types": sfn.JsonPath.string_at(
                         "$.copy_to_staging_result.file_extensions"
                     ),
@@ -930,6 +931,7 @@ class EgressBackendStack(Stack):
                 {
                     "Egress Request ID": sfn.JsonPath.string_at("$.egress_request_id"),
                     "Researcher Email": sfn.JsonPath.string_at("$.created_by_email"),
+                    "Workspace ID": sfn.JsonPath.string_at("$.workspace_id"),
                     "Information Governance": sfn.JsonPath.string_at(
                         "$.information_governance.result.ig_reviewer_1_email"
                     ),
@@ -1963,6 +1965,14 @@ class EgressBackendStack(Stack):
             else egress_app_url,
             description="The URL for the Egress App.",
         )
+
+        CfnOutput(
+            self,
+            "MaxDownloadsAllowed",
+            value=self.node.try_get_context(env_id).get("max_downloads_allowed"),
+            description="Max downloads allowed parameter provided.",
+        )
+
         for idx, role in enumerate(
             self.node.try_get_context(env_id).get("egress_reviewer_roles")
         ):
