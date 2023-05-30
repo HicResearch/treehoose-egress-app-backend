@@ -62,12 +62,12 @@ cd secure-egress-backend
 - [ ] Run the following commands to create an isolated Python environment and deploy the CDK backend stack:
 
 ```bash
-alias cdkv1="npx aws-cdk@1.154"
+alias cdkv2="npx aws-cdk@2.81"
 python3 -m venv .venv
 source .venv/bin/activate
 pip3 install -r requirements.txt
-cdkv1 bootstrap aws://<<AWS_ACCOUNT_ID>>/<<AWS_REGION>> # TRE account ID / eu-west-2
-cdkv1 deploy
+cdkv2 bootstrap aws://<<AWS_ACCOUNT_ID>>/<<AWS_REGION>> # TRE account ID / eu-west-2
+cdkv2 deploy
 ```
 
 ## Solution Overview
