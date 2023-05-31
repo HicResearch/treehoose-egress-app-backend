@@ -73,7 +73,6 @@ cdkv1 deploy
 ## Solution Overview
 
 - [Egress App Backend](#egress-app-backend)
-  - [Remove email restrictions](#remove-email-restrictions)
   - [Deployment](#deployment)
   - [Solution Overview](#solution-overview)
   - [1. Egress Backend Stack](#1-egress-backend-stack)
@@ -255,7 +254,9 @@ be used at various points. Among the key values are:
 
   - Step Function choice task which parses the status of the request as received from the frontend API call in the
     previous task to determine if the request was **_APPROVED_** or **_REJECTED_** by Information Governance
-  - At this step the Step Function also checks if any additional approvals are required based on the value of `is_single_approval_enabled`. If no further approvals are required the appropriate data operation is done based on the decision and an email is sent to the requester.
+  - At this step the Step Function also checks if any additional approvals are required based on the value of `is_single_approval_enabled`.
+  If no further approvals are required the appropriate data operation is done based on the decision
+  and an email is sent to the requester.
     If an additional approval is required Research IT approval workflow is followed.
 
 - **Delete Rejected Objects From Staging - IGLead:**

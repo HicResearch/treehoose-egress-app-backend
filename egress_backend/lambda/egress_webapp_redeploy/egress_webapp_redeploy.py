@@ -21,7 +21,7 @@ egress_webapp_branch = os.environ.get("EGRESS_WEBAPP_BRANCH")
 def handler(event, context):
     logger.info("Starting redeployment of the egress web app in Amplify")
 
-    logger.debug("Egress webapp bucket name: " + egress_webapp_bucket_name)
+    logger.debug("Egress webapp bucket name: %s", egress_webapp_bucket_name)
 
     bucket_name = event["Records"][0]["s3"]["bucket"]["name"]
     object_key = event["Records"][0]["s3"]["object"]["key"]

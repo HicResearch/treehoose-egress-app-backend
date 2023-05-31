@@ -48,7 +48,7 @@ def start_egress_workflow(message):
     message["is_single_approval_enabled"] = is_single_approval_enabled
 
     logger.info(
-        "Starting workflow with egress request ID: " + message["egress_request_id"]
+        "Starting workflow with egress request ID: %s", message["egress_request_id"]
     )
 
     step_fn_client.start_execution(

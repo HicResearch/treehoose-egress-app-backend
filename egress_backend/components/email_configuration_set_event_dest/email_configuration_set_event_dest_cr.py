@@ -5,16 +5,16 @@
 
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_logs as logs
-from aws_cdk import core as cdk
 from aws_cdk.custom_resources import (
     AwsCustomResource,
     AwsCustomResourcePolicy,
     AwsSdkCall,
     PhysicalResourceId,
 )
+from constructs import Construct
 
 
-class EmailConfigurationSetEventDestinationCustomResource(cdk.Construct):
+class EmailConfigurationSetEventDestinationCustomResource(Construct):
     """Construct to trigger the creation of an SES configuration set event destination. Using custom resource because an SNS destination cannot be created
     natively in CDK.
     :param account_id -- The AWS Account ID
@@ -25,7 +25,7 @@ class EmailConfigurationSetEventDestinationCustomResource(cdk.Construct):
 
     def __init__(
         self,
-        scope: cdk.Construct,
+        scope: Construct,
         id: str,  # noqa A002 default cdk construct
         account_id: str,
         region: str,
@@ -78,7 +78,6 @@ class EmailConfigurationSetEventDestinationCustomResource(cdk.Construct):
     def create(
         self, configuration_set_name, event_destination_name, destination_topic_arn
     ):
-
         create_params = {
             "ConfigurationSetName": configuration_set_name,
             "EventDestination": {
@@ -104,7 +103,6 @@ class EmailConfigurationSetEventDestinationCustomResource(cdk.Construct):
         )
 
     def delete(self, configuration_set_name, event_destination_name):
-
         delete_params = {
             "ConfigurationSetName": configuration_set_name,
             "EventDestinationName": event_destination_name,

@@ -5,16 +5,16 @@
 
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_logs as logs
-from aws_cdk import core as cdk
 from aws_cdk.custom_resources import (
     AwsCustomResource,
     AwsCustomResourcePolicy,
     AwsSdkCall,
     PhysicalResourceId,
 )
+from constructs import Construct
 
 
-class EmailConfigurationSetCustomResource(cdk.Construct):
+class EmailConfigurationSetCustomResource(Construct):
     """Construct to trigger the creation of an SES configuration set. Uses AWSCustomResource internally
     :param account_id -- The AWS Account ID
     :param region -- The deployment region
@@ -24,7 +24,7 @@ class EmailConfigurationSetCustomResource(cdk.Construct):
 
     def __init__(
         self,
-        scope: cdk.Construct,
+        scope: Construct,
         id: str,  # noqa A002 default cdk construct
         account_id: str,
         region: str,
@@ -71,7 +71,6 @@ class EmailConfigurationSetCustomResource(cdk.Construct):
         )
 
     def create(self, configuration_set_name):
-
         create_params = {
             "ConfigurationSetName": configuration_set_name,
             "SendingOptions": {"SendingEnabled": True},
@@ -85,7 +84,6 @@ class EmailConfigurationSetCustomResource(cdk.Construct):
         )
 
     def delete(self, configuration_set_name):
-
         delete_params = {"ConfigurationSetName": configuration_set_name}
 
         return AwsSdkCall(

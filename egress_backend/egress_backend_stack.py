@@ -6,32 +6,37 @@
 import json
 from os import path
 
-import aws_cdk.aws_amplify as amplify
-import aws_cdk.aws_appsync as appsync
-import aws_cdk.aws_cognito as cognito
-import aws_cdk.aws_dynamodb as ddb
-import aws_cdk.aws_ec2 as ec2
-import aws_cdk.aws_efs as efs
-import aws_cdk.aws_iam as iam
-import aws_cdk.aws_kms as kms
-import aws_cdk.aws_lambda as lmb
-import aws_cdk.aws_logs as logs
-import aws_cdk.aws_s3 as s3
-import aws_cdk.aws_s3_notifications as s3n
-import aws_cdk.aws_sns as sns
-import aws_cdk.aws_sns_subscriptions as subscriptions
-import aws_cdk.aws_stepfunctions as sfn
-import aws_cdk.aws_stepfunctions_tasks as sfn_tasks
-from aws_cdk import core as cdk
-from aws_cdk.core import Duration, Tags
+from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack, Tags
+from aws_cdk import aws_amplify as amplify
+from aws_cdk import aws_appsync as appsync
+from aws_cdk import aws_cognito as cognito
+from aws_cdk import aws_dynamodb as ddb
+from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_efs as efs
+from aws_cdk import aws_iam as iam
+from aws_cdk import aws_kms as kms
+from aws_cdk import aws_lambda as lmb
+from aws_cdk import aws_logs as logs
+from aws_cdk import aws_s3 as s3
+from aws_cdk import aws_s3_notifications as s3n
+from aws_cdk import aws_sns as sns
+from aws_cdk import aws_sns_subscriptions as subscriptions
+from aws_cdk import aws_stepfunctions as sfn
+from aws_cdk import aws_stepfunctions_tasks as sfn_tasks
+from aws_cdk import aws_wafv2 as wafv2
 from cdk_nag import NagSuppressions
-from components.email_configuration_set.email_configuration_set_cr import (
+from constructs import Construct
+
+from egress_backend.components.amplify_waf_addon.amplify_waf_addon import (
+    CustomAmplifyDistribution,
+)
+from egress_backend.components.email_configuration_set.email_configuration_set_cr import (
     EmailConfigurationSetCustomResource,
 )
-from components.email_configuration_set_event_dest.email_configuration_set_event_dest_cr import (
+from egress_backend.components.email_configuration_set_event_dest.email_configuration_set_event_dest_cr import (
     EmailConfigurationSetEventDestinationCustomResource,
 )
-from components.email_identity.email_identity_verification_cr import (
+from egress_backend.components.email_identity.email_identity_verification_cr import (
     EmailIdentityVerificationCustomResource,
 )
 
@@ -55,9 +60,9 @@ def from_bool_string(s, rtype):
     raise ValueError(f"Invalid boolean string: {s}")
 
 
-class EgressBackendStack(cdk.Stack):
+class EgressBackendStack(Stack):
     def __init__(
-        self, scope: cdk.Construct, construct_id: str, env_id: str, **kwargs
+        self, scope: Construct, construct_id: str, env_id: str, **kwargs
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
@@ -105,32 +110,6 @@ class EgressBackendStack(cdk.Stack):
             "datalake_target_bucket_kms_arn"
         )
 
-        if datalake_target_bucket_arn and datalake_target_bucket_kms_arn:
-            datalake_target_provided = True
-        elif not datalake_target_bucket_arn and not datalake_target_bucket_kms_arn:
-            datalake_target_provided = False
-        else:
-            raise ValueError(
-                "Either both or neither of datalake_target_bucket_arn and datalake_target_bucket_kms_arn required"
-            )
-
-        if datalake_target_provided:
-            # Import existing DataLake target Bucket
-            # datalake_bucket = s3.Bucket.from_bucket_arn(
-            egress_target_bucket = s3.Bucket.from_bucket_arn(
-                self,
-                "datalake-target-bucket",
-                self.node.try_get_context(env_id).get("datalake_target_bucket_arn"),
-            )
-
-            # Import existing DataLake target Bucket KMS key
-            # datalake_bucket_kms_key = kms.Key.from_key_arn(
-            egress_target_bucket_kms_key = kms.Key.from_key_arn(
-                self,
-                "datalake-target-bucket-kms-key",
-                self.node.try_get_context(env_id).get("datalake_target_bucket_kms_arn"),
-            )
-
         # Variable for the project name
         tre_project = self.node.try_get_context(env_id)["resource_tags"]["ProjectName"]
 
@@ -143,10 +122,8 @@ class EgressBackendStack(cdk.Stack):
         # Define Lambda Powertools layer
         powertools_layer = lmb.LayerVersion.from_layer_version_arn(
             self,
-            "LambdaPowertoolsLayer",
-            layer_version_arn=self.node.try_get_context(env_id).get(
-                "powertools_lambda_layer_arn"
-            ),
+            "rPowertoolsLayer",
+            f"arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPython:{self.node.try_get_context(env_id).get('powertools_layer_version')}",  # noqa: E501
         )
 
         # Variable for TRE admin email address
@@ -164,6 +141,9 @@ class EgressBackendStack(cdk.Stack):
             self.node.try_get_context(env_id).get("use_s3_access_points"), bool
         )
 
+        # Parameters for custom domain configuration
+        custom_domain_config = self.node.try_get_context(env_id).get("custom_domain")
+
         # The code that defines your stack goes here
         this_dir = path.dirname(__file__)
 
@@ -171,7 +151,6 @@ class EgressBackendStack(cdk.Stack):
         s3_kms_key = kms.Key(
             self, "Egress-S3-Key", alias="alias/Egress-S3-Key", enable_key_rotation=True
         )
-
         if ig_workspaces_account:
             s3_kms_key.add_to_resource_policy(
                 iam.PolicyStatement(
@@ -219,6 +198,23 @@ class EgressBackendStack(cdk.Stack):
             self, "SES-Monitoring-Notifications", master_key=sns_kms_key
         )
 
+        ses_monitoring_sns_topic.add_to_resource_policy(
+            iam.PolicyStatement(
+                sid="AllowPublishThroughSSLOnly",
+                effect=iam.Effect.DENY,
+                principals=[
+                    iam.AnyPrincipal(),
+                ],
+                resources=[
+                    ses_monitoring_sns_topic.topic_arn,
+                ],
+                actions=[
+                    "SNS:Publish",
+                ],
+                conditions={"Bool": {"aws:SecureTransport": "false"}},
+            )
+        )
+
         sns_configuration_set_destination = (
             EmailConfigurationSetEventDestinationCustomResource(
                 self,
@@ -258,10 +254,10 @@ class EgressBackendStack(cdk.Stack):
             configuration_set_name=ses_config_set_name,
         )
 
-        # Ensure configuration set is created before email verification
+        # # Ensure configuration set is created before email verification
         ses_sender_email_verification.node.add_dependency(ses_configuration_set)
 
-        # Ensure configuration set is created before configuration set destination
+        # # Ensure configuration set is created before configuration set destination
         sns_configuration_set_destination.node.add_dependency(ses_configuration_set)
 
         # Create a custom VPC which will be needed for the EFS mount point.
@@ -272,7 +268,9 @@ class EgressBackendStack(cdk.Stack):
             max_azs=2,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
-                    cidr_mask=24, name="efs", subnet_type=ec2.SubnetType.ISOLATED
+                    cidr_mask=24,
+                    name="efs",
+                    subnet_type=ec2.SubnetType.PRIVATE_ISOLATED,
                 )
             ],
         )
@@ -295,7 +293,7 @@ class EgressBackendStack(cdk.Stack):
 
         # Create EFS file system
         file_system = efs.FileSystem(
-            self, "FileSystem", vpc=vpc, removal_policy=cdk.RemovalPolicy.DESTROY
+            self, "FileSystem", vpc=vpc, removal_policy=RemovalPolicy.DESTROY
         )
 
         file_access_point = file_system.add_access_point(
@@ -323,6 +321,13 @@ class EgressBackendStack(cdk.Stack):
             point_in_time_recovery=True,
         )
 
+        # Define execution & custom policy
+        lambda_exec_policy = iam.ManagedPolicy.from_managed_policy_arn(
+            self,
+            id="lambda-exec-policy-00",
+            managed_policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        )
+
         # Define SNS topics for notifying reviewers
         ig_role_topic = sns.Topic(
             self,
@@ -330,6 +335,23 @@ class EgressBackendStack(cdk.Stack):
             display_name=f"{tre_project} Information Governance Notifications",
             topic_name="Information-Governance-Notifications",
             master_key=sns_kms_key,
+        )
+
+        ig_role_topic.add_to_resource_policy(
+            iam.PolicyStatement(
+                sid="AllowPublishThroughSSLOnly",
+                effect=iam.Effect.DENY,
+                principals=[
+                    iam.AnyPrincipal(),
+                ],
+                resources=[
+                    ig_role_topic.topic_arn,
+                ],
+                actions=[
+                    "SNS:Publish",
+                ],
+                conditions={"Bool": {"aws:SecureTransport": "false"}},
+            )
         )
 
         rit_role_topic = sns.Topic(
@@ -340,12 +362,28 @@ class EgressBackendStack(cdk.Stack):
             master_key=sns_kms_key,
         )
 
+        rit_role_topic.add_to_resource_policy(
+            iam.PolicyStatement(
+                sid="AllowPublishThroughSSLOnly",
+                effect=iam.Effect.DENY,
+                principals=[
+                    iam.AnyPrincipal(),
+                ],
+                resources=[
+                    rit_role_topic.topic_arn,
+                ],
+                actions=[
+                    "SNS:Publish",
+                ],
+                conditions={"Bool": {"aws:SecureTransport": "false"}},
+            )
+        )
+
         # Define server access logs bucket to monitor staging bucket
         access_logs_bucket = s3.Bucket(
             self,
             "AccessLogsBucket",
-            encryption=s3.BucketEncryption.KMS,
-            encryption_key=s3_kms_key,
+            encryption=s3.BucketEncryption.S3_MANAGED,
             enforce_ssl=True,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
         )
@@ -419,9 +457,14 @@ class EgressBackendStack(cdk.Stack):
         for tag_key, tag_value in self.node.try_get_context(env_id)["dataset"].items():
             Tags.of(egress_staging_bucket).add(tag_key, tag_value)
 
-        if not datalake_target_provided:
-            # Add Egress Target Bucket
-            egress_target_bucket = s3.Bucket(
+        datalake_bucket = (
+            s3.Bucket.from_bucket_arn(
+                self,
+                "datalake-target-bucket",
+                self.node.try_get_context(env_id).get("datalake_target_bucket_arn"),
+            )
+            if datalake_target_bucket_arn and datalake_target_bucket_kms_arn
+            else s3.Bucket(
                 self,
                 "Egress-Target-Bucket",
                 encryption=s3.BucketEncryption.KMS,
@@ -433,14 +476,56 @@ class EgressBackendStack(cdk.Stack):
                 versioned=True,
                 bucket_key_enabled=True,
             )
-            egress_target_bucket_kms_key = s3_kms_key
+        )
+
+        datalake_bucket_kms_key = (
+            kms.Key.from_key_arn(
+                self,
+                "datalake-target-bucket-kms-key",
+                self.node.try_get_context(env_id).get("datalake_target_bucket_kms_arn"),
+            )
+            if datalake_target_bucket_arn and datalake_target_bucket_kms_arn
+            else s3_kms_key
+        )
 
         # Add Amplify App
         amplify_branch_name = "main"
-        amplify_app = amplify.App(self, "EgressFrontendApp")
-        amplify_app.add_branch(amplify_branch_name)
+        amplify_app = amplify.CfnApp(
+            self,
+            "EgressFrontendApp",
+            name="EgressFrontendApp",
+            custom_headers=f"""
+            customHeaders:
+                - pattern: '**/*'
+                  headers:
+                    - key: 'Strict-Transport-Security'
+                      value: 'max-age=31536000; includeSubDomains'
+                    - key: 'X-Frame-Options'
+                      value: 'SAMEORIGIN'
+                    - key: 'X-XSS-Protection'
+                      value: '1; mode=block'
+                    - key: 'X-Content-Type-Options'
+                      value: 'nosniff'
+                    - key: 'Referrer-Policy'
+                      value: 'same-origin'
+                    - key: 'Content-Security-Policy'
+                      value: default-src 'self'; img-src 'self' data:; \
+                        script-src 'self' https://cognito-idp.{self.region}.amazonaws.com/ https://cognito-identity.{self.region}.amazonaws.com; \
+                        font-src fonts.gstatic.com use.fontawesome.com data:;style-src 'self' fonts.googleapis.com use.fontawesome.com 'unsafe-inline'; object-src 'none'; \
+                        connect-src 'self' https://cognito-idp.{self.region}.amazonaws.com/ https://cognito-identity.{self.region}.amazonaws.com *.appsync-api.{self.region}.amazonaws.com \
+                        https://{self.node.try_get_context(env_id).get('cognito_userpool_domain')}.auth.{self.region}.amazoncognito.com/oauth2/token;
+                """,
+        )
+
+        amplify.CfnBranch(
+            self,
+            "EgressFrontendAppBranch",
+            app_id=amplify_app.attr_app_id,
+            branch_name=amplify_branch_name,
+        )
+
         egress_app_url = (
-            f"https://{amplify_branch_name}.{amplify_app.app_id}.amplifyapp.com"
+            f"https://{amplify_branch_name}.{amplify_app.attr_app_id}.amplifyapp.com"
         )
 
         # Add Egress Web App Bucket
@@ -482,7 +567,7 @@ class EgressBackendStack(cdk.Stack):
                     effect=iam.Effect.ALLOW,
                     actions=["amplify:StartDeployment"],
                     resources=[
-                        f"arn:aws:amplify:{self.region}:{self.account}:apps/{amplify_app.app_id}/branches/{amplify_branch_name}/deployments/start"
+                        f"arn:aws:amplify:{self.region}:{self.account}:apps/{amplify_app.attr_app_id}/branches/{amplify_branch_name}/deployments/start"
                     ],
                 ),
             ],
@@ -492,13 +577,15 @@ class EgressBackendStack(cdk.Stack):
             egress_webapp_redeploy_lambda_policy
         )
 
+        egress_webapp_redeploy_lambda_role.add_managed_policy(lambda_exec_policy)
+
         egress_webapp_redeploy_function = lmb.Function(
             self,
             "egress-webapp-redeploy-function",
             description="Lambda function which redeploys packaged code to Amplify to update the egress web app",
             function_name="egress_webapp_redeploy",
             handler="egress_webapp_redeploy.handler",
-            runtime=lmb.Runtime.PYTHON_3_8,
+            runtime=lmb.Runtime.PYTHON_3_9,
             code=lmb.Code.from_asset(
                 path.join(this_dir, "lambda/egress_webapp_redeploy")
             ),
@@ -507,7 +594,7 @@ class EgressBackendStack(cdk.Stack):
             timeout=Duration.seconds(60),
             environment={
                 "EGRESS_WEBAPP_BUCKET_NAME": egress_webapp_bucket.bucket_name,
-                "EGRESS_WEBAPP_ID": amplify_app.app_id,
+                "EGRESS_WEBAPP_ID": amplify_app.attr_app_id,
                 "EGRESS_WEBAPP_BRANCH": amplify_branch_name,
                 "REGION": self.region,
             },
@@ -517,6 +604,18 @@ class EgressBackendStack(cdk.Stack):
             s3.EventType.OBJECT_CREATED,
             s3n.LambdaDestination(egress_webapp_redeploy_function),
         )
+
+        global_web_acl_arn = self.node.try_get_context(env_id).get("global_web_acl_arn")
+        if global_web_acl_arn:
+            custom_amplify_distribution = CustomAmplifyDistribution(
+                self,
+                "rCustomAmplifyDistribution",
+                web_acl_arn=global_web_acl_arn,
+                custom_domain_config=custom_domain_config,
+                app_id=amplify_app.attr_app_id,
+                branch_name=amplify_branch_name,
+                powertools_layer=powertools_layer,
+            )
 
         # Define Egress Workflow Step Function Tasks
         add_request_to_db_task = sfn_tasks.DynamoPutItem(
@@ -714,13 +813,6 @@ class EgressBackendStack(cdk.Stack):
             result_path=sfn.JsonPath.DISCARD,
         )
 
-        # Define execution & custom policy
-        lambda_exec_policy = iam.ManagedPolicy.from_managed_policy_arn(
-            self,
-            id="lambda-exec-policy-00",
-            managed_policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-        )
-
         copy_staging_lambda_role = iam.Role(
             self,
             "copy-egress-candidates-to-staging-role",
@@ -780,7 +872,7 @@ class EgressBackendStack(cdk.Stack):
             description="Lambda function which copies candidate egress files to egress staging bucket",
             function_name="copy_egress_candidates_to_staging",
             handler="copy_egress_candidates_to_staging.handler",
-            runtime=lmb.Runtime.PYTHON_3_8,
+            runtime=lmb.Runtime.PYTHON_3_9,
             code=lmb.Code.from_asset(
                 path.join(this_dir, "lambda/copy_egress_candidates_to_staging")
             ),
@@ -817,7 +909,6 @@ class EgressBackendStack(cdk.Stack):
             ),
             message=sfn.TaskInput.from_object(
                 {
-                    "Workspace ID": sfn.JsonPath.string_at("$.workspace_id"),
                     "Egress Request ID": sfn.JsonPath.string_at("$.egress_request_id"),
                     "Researcher Email": sfn.JsonPath.string_at("$.created_by_email"),
                     "Egress Object File Types": sfn.JsonPath.string_at(
@@ -837,7 +928,6 @@ class EgressBackendStack(cdk.Stack):
             ),
             message=sfn.TaskInput.from_object(
                 {
-                    "Workspace ID": sfn.JsonPath.string_at("$.workspace_id"),
                     "Egress Request ID": sfn.JsonPath.string_at("$.egress_request_id"),
                     "Researcher Email": sfn.JsonPath.string_at("$.created_by_email"),
                     "Information Governance": sfn.JsonPath.string_at(
@@ -858,7 +948,7 @@ class EgressBackendStack(cdk.Stack):
             description="Lambda function which updated egress requests in DynamoDB with a Step Function task token",
             function_name="update_egress_request_with_task_token",
             handler="update_egress_request_with_task_token.handler",
-            runtime=lmb.Runtime.PYTHON_3_8,
+            runtime=lmb.Runtime.PYTHON_3_9,
             code=lmb.Code.from_asset(
                 path.join(this_dir, "lambda/update_egress_request")
             ),
@@ -925,7 +1015,7 @@ class EgressBackendStack(cdk.Stack):
             description="Lambda function which tags egress candidate files as rejected in the staging bucket",
             function_name="handle_egress_rejection",
             handler="handle_egress_rejection.handler",
-            runtime=lmb.Runtime.PYTHON_3_8,
+            runtime=lmb.Runtime.PYTHON_3_9,
             code=lmb.Code.from_asset(
                 path.join(this_dir, "lambda/handle_egress_rejection")
             ),
@@ -999,7 +1089,7 @@ class EgressBackendStack(cdk.Stack):
             description="Lambda function which copies candidate egress files to egress datalake bucket",
             function_name="copy_egress_candidates_to_datalake",
             handler="copy_egress_candidates_to_datalake.handler",
-            runtime=lmb.Runtime.PYTHON_3_8,
+            runtime=lmb.Runtime.PYTHON_3_9,
             code=lmb.Code.from_asset(
                 path.join(this_dir, "lambda/copy_egress_candidates_to_datalake")
             ),
@@ -1009,8 +1099,8 @@ class EgressBackendStack(cdk.Stack):
             memory_size=1024,
             environment={
                 "EGRESS_STAGING_BUCKET": egress_staging_bucket.bucket_name,
-                "EGRESS_DATALAKE_BUCKET": egress_target_bucket.bucket_name,
-                "EGRESS_DATALAKE_BUCKET_KMS_KEY": egress_target_bucket_kms_key.key_arn,
+                "EGRESS_DATALAKE_BUCKET": datalake_bucket.bucket_name,
+                "EGRESS_DATALAKE_BUCKET_KMS_KEY": datalake_bucket_kms_key.key_arn,
                 "EFS_MOUNT_PATH": efs_mount_path + "/",  # Need the extra slash
                 "REGION": self.region,
             },
@@ -1021,13 +1111,13 @@ class EgressBackendStack(cdk.Stack):
         )
 
         # Grant copy lambda function permission to write to datalake bucket
-        egress_target_bucket.grant_put(copy_egress_candidates_to_datalake_function)
+        datalake_bucket.grant_put(copy_egress_candidates_to_datalake_function)
 
         # Grant copy lambda function permission to use KMS key of the staging bucket
         s3_kms_key.grant_decrypt(copy_egress_candidates_to_datalake_function)
 
         # Grant copy lambda function permission to use KMS key of the datalake bucket
-        egress_target_bucket_kms_key.grant_encrypt_decrypt(
+        datalake_bucket_kms_key.grant_encrypt_decrypt(
             copy_egress_candidates_to_datalake_function
         )
 
@@ -1063,7 +1153,7 @@ class EgressBackendStack(cdk.Stack):
             description="Lambda function which customises the SAML response to handle group mappings",
             function_name="pre_token_generation",
             handler="pre_token_generation.handler",
-            runtime=lmb.Runtime.PYTHON_3_8,
+            runtime=lmb.Runtime.PYTHON_3_9,
             code=lmb.Code.from_asset(
                 path.join(this_dir, "lambda/pre_token_generation")
             ),
@@ -1092,7 +1182,7 @@ class EgressBackendStack(cdk.Stack):
                 "require_uppercase": True,
                 "require_digits": True,
                 "require_symbols": True,
-                "temp_password_validity": cdk.Duration.days(3),
+                "temp_password_validity": Duration.days(3),
             },
             custom_attributes={
                 "groups": cognito.StringAttribute(min_len=0, max_len=2048, mutable=True)
@@ -1111,11 +1201,54 @@ class EgressBackendStack(cdk.Stack):
                 group_name=group,
             )
 
+        # add additional Idp as per configuration
+        supported_idps = ["COGNITO"]
+
+        if self.node.try_get_context(env_id).get("custom_idp").get("is_enabled"):
+            cognito.CfnUserPoolIdentityProvider(
+                self,
+                "CustomIdentityProvider",
+                provider_name=self.node.try_get_context(env_id)
+                .get("custom_idp")
+                .get("name"),
+                provider_type="SAML",
+                user_pool_id=egress_user_pool.user_pool_id,
+                attribute_mapping={
+                    "email": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+                    "family_name": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname",
+                    "given_name": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname",
+                    "name": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+                },
+                provider_details={
+                    "MetadataURL": self.node.try_get_context(env_id)
+                    .get("custom_idp")
+                    .get("metadata_url")
+                },
+            )
+            supported_idps.append(
+                self.node.try_get_context(env_id).get("custom_idp").get("name")
+            )
+
+        # add additional urls based on domain customisation and use of Cloudfront
+        callback_ur_ls = [egress_app_url]
+        logout_ur_ls = [egress_app_url]
+
+        if global_web_acl_arn:
+            callback_ur_ls.append(
+                f"https://{custom_amplify_distribution.amplify_app_distribution.distribution_domain_name}"
+            )
+            logout_ur_ls.append(
+                f"https://{custom_amplify_distribution.amplify_app_distribution.distribution_domain_name}"
+            )
+        if custom_domain_config.get("is_enabled"):
+            callback_ur_ls.append(f"https://{custom_domain_config.get('domain_name')}")
+            logout_ur_ls.append(f"https://{custom_domain_config.get('domain_name')}")
+
         # Add user pool app client
         app_client = cognito.CfnUserPoolClient(
             self,
             "Egress-App-Client",
-            supported_identity_providers=["COGNITO"],
+            supported_identity_providers=supported_idps,
             client_name="EgressWebApp",
             allowed_o_auth_flows_user_pool_client=True,
             allowed_o_auth_flows=["code"],
@@ -1129,8 +1262,8 @@ class EgressBackendStack(cdk.Stack):
             prevent_user_existence_errors="ENABLED",
             generate_secret=False,
             refresh_token_validity=1,
-            callback_ur_ls=[egress_app_url],
-            logout_ur_ls=[egress_app_url],
+            callback_ur_ls=callback_ur_ls,
+            logout_ur_ls=logout_ur_ls,
             user_pool_id=egress_user_pool.user_pool_id,
         )
 
@@ -1145,12 +1278,18 @@ class EgressBackendStack(cdk.Stack):
             user_pool_id=egress_user_pool.user_pool_id,
         )
 
+        regional_web_acl_arn = self.node.try_get_context(env_id).get(
+            "regional_web_acl_arn"
+        )
+
         # Define AppSync API with user pool authorization and defined schema
         appsync_api = appsync.GraphqlApi(
             self,
             "Egress-Api",
             name="Egress-API",
-            schema=appsync.Schema.from_asset("egress_backend/graphql/schema.graphql"),
+            schema=appsync.SchemaFile.from_asset(
+                "egress_backend/graphql/schema.graphql"
+            ),
             authorization_config=appsync.AuthorizationConfig(
                 default_authorization=appsync.AuthorizationMode(
                     authorization_type=appsync.AuthorizationType.USER_POOL,
@@ -1166,6 +1305,21 @@ class EgressBackendStack(cdk.Stack):
                 field_log_level=appsync.FieldLogLevel.ERROR,
             ),
         )
+
+        if regional_web_acl_arn:
+            wafv2.CfnWebACLAssociation(
+                self,
+                "rAttachWafToCognitoUserPool",
+                resource_arn=egress_user_pool.user_pool_arn,
+                web_acl_arn=regional_web_acl_arn,
+            )
+
+            wafv2.CfnWebACLAssociation(
+                self,
+                "rAttachWafToAppSyncApi",
+                resource_arn=appsync_api.arn,
+                web_acl_arn=regional_web_acl_arn,
+            )
 
         send_final_decision_email = sfn_tasks.CallAwsService(
             self,
@@ -1211,9 +1365,10 @@ class EgressBackendStack(cdk.Stack):
             iam_action="ses:sendEmail",
         )
 
-        # This is passed around the lambda so must be a string
-        is_single_approval_enabled = from_bool_string(
-            self.node.try_get_context(env_id).get("enable_single_approval"), str
+        is_single_approval_enabled = (
+            self.node.try_get_context(env_id).get("enable_single_approval")
+            if self.node.try_get_context(env_id).get("enable_single_approval")
+            else "false"
         )
 
         # Define Egress Workflow Step Function
@@ -1314,7 +1469,7 @@ class EgressBackendStack(cdk.Stack):
             description="Lambda function which triggers the egress workflow step function",
             function_name="start_egress_workflow",
             handler="start_egress_workflow.handler",
-            runtime=lmb.Runtime.PYTHON_3_8,
+            runtime=lmb.Runtime.PYTHON_3_9,
             code=lmb.Code.from_asset(
                 path.join(this_dir, "lambda/start_egress_workflow")
             ),
@@ -1348,7 +1503,7 @@ class EgressBackendStack(cdk.Stack):
             description="Lambda function which handles API requests",
             function_name="egress_api_handler",
             handler="main.handler",
-            runtime=lmb.Runtime.PYTHON_3_8,
+            runtime=lmb.Runtime.PYTHON_3_9,
             code=lmb.Code.from_asset(path.join(this_dir, "lambda/egress_api")),
             layers=[powertools_layer],
             tracing=lmb.Tracing.ACTIVE,
@@ -1357,7 +1512,7 @@ class EgressBackendStack(cdk.Stack):
                 "TABLE": egress_requests_table.table_name,
                 "STEP_FUNCTION_ARN": data_egress_step_function.state_machine_arn,
                 "REGION": self.region,
-                "DATALAKE_BUCKET": egress_target_bucket.bucket_name,
+                "DATALAKE_BUCKET": datalake_bucket.bucket_name,
                 "REVIEWER_LIST": json.dumps(
                     self.node.try_get_context(env_id).get("egress_reviewer_roles")
                 ),
@@ -1371,10 +1526,10 @@ class EgressBackendStack(cdk.Stack):
         )
 
         # Grant the api lambda permission to access the datalake bucket
-        egress_target_bucket.grant_read(egress_api_handler)
+        datalake_bucket.grant_read(egress_api_handler)
 
         # Grant api lambda function permission to use KMS key of the datalake bucket
-        egress_target_bucket_kms_key.grant_decrypt(egress_api_handler)
+        datalake_bucket_kms_key.grant_decrypt(egress_api_handler)
 
         # Grant the api lambda permission to access the DynamoDB table
         egress_requests_table.grant_read_write_data(egress_api_handler)
@@ -1388,6 +1543,7 @@ class EgressBackendStack(cdk.Stack):
 
         # Define lambda resolvers according to schema defintion
         lambda_ds.create_resolver(
+            "listRequestsResolver",
             type_name="Query",
             field_name="listRequests",
             request_mapping_template=appsync.MappingTemplate.from_string(
@@ -1410,6 +1566,7 @@ class EgressBackendStack(cdk.Stack):
         )
 
         lambda_ds.create_resolver(
+            "updateRequestResolver",
             type_name="Mutation",
             field_name="updateRequest",
             request_mapping_template=appsync.MappingTemplate.from_string(
@@ -1432,6 +1589,7 @@ class EgressBackendStack(cdk.Stack):
         )
 
         lambda_ds.create_resolver(
+            "downloadDataResolver",
             type_name="Mutation",
             field_name="downloadData",
             request_mapping_template=appsync.MappingTemplate.from_string(
@@ -1492,7 +1650,17 @@ class EgressBackendStack(cdk.Stack):
                 {
                     "id": "AwsSolutions-IAM4",
                     "reason": "Permissions only used for custom resource logging and cannot be customised",
-                }
+                },
+            ],
+        )
+        NagSuppressions.add_resource_suppressions_by_path(
+            self,
+            f"/{self.stack_name}/AWS679f53fac002430cb0da5b7982bd2287/Resource",
+            [
+                {
+                    "id": "AwsSolutions-L1",
+                    "reason": "Construct created by CDK",
+                },
             ],
         )
         NagSuppressions.add_resource_suppressions(
@@ -1787,89 +1955,61 @@ class EgressBackendStack(cdk.Stack):
             True,
         )
 
-        cdk.CfnOutput(
+        CfnOutput(
             self,
             "EgressAppURL",
-            value=egress_app_url,
+            value=f"https://{custom_domain_config.get('domain_name')}"
+            if custom_domain_config.get("is_enabled")
+            else egress_app_url,
             description="The URL for the Egress App.",
         )
-
-        cdk.CfnOutput(
-            self,
-            "MaxDownloadsAllowed",
-            value=self.node.try_get_context(env_id).get("max_downloads_allowed"),
-            description="Max downloads allowed parameter provided.",
-        )
-
         for idx, role in enumerate(
             self.node.try_get_context(env_id).get("egress_reviewer_roles")
         ):
-
-            cdk.CfnOutput(
+            CfnOutput(
                 self,
                 f"EgressReviewerRole{idx+1}",
                 value=role,
                 description=f"The Cognito group name for reviewer type {role}.",
             )
 
-        cdk.CfnOutput(
+        CfnOutput(
             self,
             "AppSyncGraphQLURL",
             value=appsync_api.graphql_url,
             description="The URL for the endpoint in AppSync.",
         )
 
-        cdk.CfnOutput(
+        CfnOutput(
             self,
             "CognitoUserPoolId",
             value=egress_user_pool.user_pool_id,
             description="The Id for the Cognito User Pool created.",
         )
 
-        cdk.CfnOutput(
+        CfnOutput(
             self,
             "CognitoAppClientId",
             value=app_client.get_att("Ref").to_string(),
             description="The Id for the Cognito App client created.",
         )
 
-        cdk.CfnOutput(
+        CfnOutput(
             self,
             "CognitoUserPoolDomain",
             value=f'{self.node.try_get_context(env_id).get("cognito_userpool_domain")}.auth.{self.region}.amazoncognito.com',
             description="The domain name for the Cognito User Pool created.",
         )
 
-        cdk.CfnOutput(
+        CfnOutput(
             self,
             "EgressWebAppS3BucketName",
             value=egress_webapp_bucket.bucket_name,
             description="The name for the S3 bucket created to host the packaged frontend app.",
         )
 
-        cdk.CfnOutput(
-            self,
-            "EgressWebAppTargetS3BucketName",
-            value=egress_target_bucket.bucket_name,
-            description="The name for the S3 bucket to store the final egress data.",
-        )
-
-        cdk.CfnOutput(
-            self,
-            "EgressStagingS3BucketName",
-            value=egress_staging_bucket.bucket_name,
-            description="The name for the egress staging S3 bucket to review files for egress approvals",
-        )
-
-        cdk.CfnOutput(
-            self,
-            "EgressStagingS3BucketKeyArn",
-            value=s3_kms_key.key_arn,
-            description="KMS Key ARN for egress staging s3 bucket",
-        )
-
         if use_s3_access_points:
-            cdk.CfnOutput(
+            CfnOutput(
                 self,
                 "EgressStagingS3BucketAccessPointArn",
                 value=egress_staging_bucket_access_point.attr_arn,
