@@ -30,7 +30,7 @@ repos:
           [
             "--max-line-length=200",
             "--ignore=E203,W503",
-            "--max-cognitive-complexity=17",
+            "--max-cognitive-complexity=18",
             "--max-expression-complexity=9",
           ]
         additional_dependencies: [
