@@ -41,7 +41,7 @@ from egress_backend.components.email_identity.email_identity_verification_cr imp
 )
 
 
-def from_bool_string(s, rtype):
+def convert_bool(s, rtype):
     """
     Returns:
         rtype=str: 'true' or 'false'
@@ -49,11 +49,11 @@ def from_bool_string(s, rtype):
     """
     if rtype not in (str, bool):
         raise ValueError(f"Invalid return type: {rtype}")
-    if s.lower() == "true":
+    if (isinstance(s, str) and s.lower() == "true") or s is True:
         if rtype == str:
             return "true"
         return True
-    if s.lower() == "false":
+    if (isinstance(s, str) and s.lower() == "false") or s is False:
         if rtype == str:
             return "false"
         return False
@@ -137,7 +137,7 @@ class EgressBackendStack(Stack):
         )
 
         # Customised SWB with access points
-        use_s3_access_points = from_bool_string(
+        use_s3_access_points = convert_bool(
             self.node.try_get_context(env_id).get("use_s3_access_points"), bool
         )
 
@@ -523,6 +523,21 @@ class EgressBackendStack(Stack):
             app_id=amplify_app.attr_app_id,
             branch_name=amplify_branch_name,
         )
+
+        if convert_bool(custom_domain_config.get("is_enabled"), bool):
+            amplify.CfnDomain(
+                self,
+                "EgressFrontendAppDomain",
+                app_id=amplify_app.attr_app_id,
+                domain_name=custom_domain_config.get("domain_name"),
+                sub_domain_settings=[
+                    amplify.CfnDomain.SubDomainSettingProperty(
+                        prefix="",
+                        branch_name=amplify_branch_name,
+                    )
+                ],
+                enable_auto_sub_domain=False,
+            )
 
         egress_app_url = (
             f"https://{amplify_branch_name}.{amplify_app.attr_app_id}.amplifyapp.com"
@@ -1242,7 +1257,7 @@ class EgressBackendStack(Stack):
             logout_ur_ls.append(
                 f"https://{custom_amplify_distribution.amplify_app_distribution.distribution_domain_name}"
             )
-        if custom_domain_config.get("is_enabled"):
+        if convert_bool(custom_domain_config.get("is_enabled"), bool):
             callback_ur_ls.append(f"https://{custom_domain_config.get('domain_name')}")
             logout_ur_ls.append(f"https://{custom_domain_config.get('domain_name')}")
 
@@ -1961,7 +1976,7 @@ class EgressBackendStack(Stack):
             self,
             "EgressAppURL",
             value=f"https://{custom_domain_config.get('domain_name')}"
-            if custom_domain_config.get("is_enabled")
+            if convert_bool(custom_domain_config.get("is_enabled"), bool)
             else egress_app_url,
             description="The URL for the Egress App.",
         )
