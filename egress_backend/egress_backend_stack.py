@@ -27,19 +27,16 @@ from aws_cdk import aws_wafv2 as wafv2
 from cdk_nag import NagSuppressions
 from constructs import Construct
 
-from egress_backend.components.amplify_waf_addon.amplify_waf_addon import (
-    CustomAmplifyDistribution,
-)
-from egress_backend.components.email_configuration_set.email_configuration_set_cr import (
+from .components.amplify_waf_addon.amplify_waf_addon import CustomAmplifyDistribution
+from .components.email_configuration_set.email_configuration_set_cr import (
     EmailConfigurationSetCustomResource,
 )
-from egress_backend.components.email_configuration_set_event_dest.email_configuration_set_event_dest_cr import (
+from .components.email_configuration_set_event_dest.email_configuration_set_event_dest_cr import (
     EmailConfigurationSetEventDestinationCustomResource,
 )
-from egress_backend.components.email_identity.email_identity_verification_cr import (
+from .components.email_identity.email_identity_verification_cr import (
     EmailIdentityVerificationCustomResource,
 )
-
 from .components.utils import convert_bool
 
 
