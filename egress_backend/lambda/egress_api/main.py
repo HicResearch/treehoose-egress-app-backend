@@ -18,7 +18,7 @@ metrics = Metrics(service="EgressApiLambda", namespace="EgressRequests")
 @logger.inject_lambda_context(log_event=True)
 def handler(event, context):
     field = event["field"]
-    usergroup = event["usergroup"][0]
+    usergroups = event["usergroup"]
 
     arguments = event["arguments"] if "arguments" in event else False
     logger.debug("Invoking API: %s", field)
@@ -28,7 +28,7 @@ def handler(event, context):
 
     if field == "updateRequest":
         if arguments:
-            arguments["request"]["usergroup"] = usergroup
+            arguments["request"]["usergroup"] = usergroups
             return update_request(arguments, context)
 
         response = "Arguments not supplied"
