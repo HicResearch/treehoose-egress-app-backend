@@ -162,7 +162,7 @@ def is_reviewer_valid(
     request_id: str, reviewer_usergroups: List[str], egress_request: Any
 ):
     current_reviewer_group = egress_request["Items"][0]["current_reviewer_group"]
-    if current_reviewer_group in reviewer_usergroups:
+    if current_reviewer_group not in reviewer_usergroups:
         logger.error(
             "Egress request: %s found but reviewer is not valid and not found in the current reviewer group: %s",
             request_id,
