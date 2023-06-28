@@ -5,7 +5,7 @@
 
 import json
 import os
-from typing import Any
+from typing import Any, List
 
 import boto3
 from aws_lambda_powertools import Logger, Tracer
@@ -28,7 +28,7 @@ def update_request(arguments: str, context: Any):
     # Get the task token and id from the request
     inbound_egress_request_id = arguments["request"]["egress_request_id"]
     inbound_task_token = arguments["request"]["task_token"]
-    usergroup = arguments["request"]["usergroup"]
+    usergroups = arguments["request"]["usergroup"]
 
     logger.info(
         "Update Request API invoked with Egress Request ID: %s",
@@ -41,7 +41,7 @@ def update_request(arguments: str, context: Any):
     # Check if reviewer is valid
     reviewer_valid = is_reviewer_valid(
         request_id=inbound_egress_request_id,
-        reviewer_usergroup=usergroup,
+        reviewer_usergroups=usergroups,
         egress_request=egress_details,
     )
 
@@ -55,7 +55,7 @@ def update_request(arguments: str, context: Any):
     # Determine egress request status and SWB status
     statuses = determine_status(
         egress_arguments=arguments,
-        reviewer_usergroup=usergroup,
+        reviewer_usergroups=usergroups,
         is_single_approval_enabled=egress_details["Items"][0][
             "is_single_approval_enabled"
         ],
@@ -81,13 +81,15 @@ def update_request(arguments: str, context: Any):
 
 # TO-DO: Inject Environment variables for reviewer group names
 def determine_status(
-    egress_arguments: Any, reviewer_usergroup: str, is_single_approval_enabled: str
+    egress_arguments: Any,
+    reviewer_usergroups: List[str],
+    is_single_approval_enabled: str,
 ):
     global egress_status
     global swb_status
     reviewer_list_groups = json.loads(reviewer_list)
 
-    if reviewer_usergroup == reviewer_list_groups[0]:
+    if reviewer_list_groups[0] in reviewer_usergroups:
         inbound_reviewer_1_decision = egress_arguments["request"][
             "ig_reviewer_1_decision"
         ]
@@ -108,7 +110,7 @@ def determine_status(
             egress_status = "REJECTED"
             swb_status = "PENDING"
 
-    elif reviewer_usergroup == reviewer_list_groups[1]:
+    elif reviewer_list_groups[1] in reviewer_usergroups:
         inbound_reviewer_1_decision = egress_arguments["request"][
             "ig_reviewer_1_decision"
         ]
@@ -133,7 +135,7 @@ def determine_status(
             swb_status = "REJECTED"
 
     else:
-        logger.error("Status mapping error with usergroup %s", reviewer_usergroup)
+        logger.error("Status mapping error with usergroup %s", reviewer_usergroups)
         raise Exception(
             "Unable to determine the status of the request. Please refresh and retry"
         )
@@ -156,9 +158,11 @@ def retrieve_request_details(request_id: str):
 
 
 # Check if reviewer is valid by matching the current reviewer group field in the DB to the incoming usergroup
-def is_reviewer_valid(request_id: str, reviewer_usergroup: str, egress_request: Any):
+def is_reviewer_valid(
+    request_id: str, reviewer_usergroups: List[str], egress_request: Any
+):
     current_reviewer_group = egress_request["Items"][0]["current_reviewer_group"]
-    if current_reviewer_group != reviewer_usergroup:
+    if current_reviewer_group not in reviewer_usergroups:
         logger.error(
             "Egress request: %s found but reviewer is not valid and not found in the current reviewer group: %s",
             request_id,

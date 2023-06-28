@@ -16,6 +16,8 @@ from aws_cdk.aws_logs import RetentionDays
 from cdk_nag import NagSuppressions
 from constructs import Construct
 
+from ..utils import convert_bool
+
 dirname = os.path.dirname(__file__)
 
 
@@ -210,7 +212,7 @@ class CustomAmplifyDistribution(Construct):
             web_acl_id=web_acl_arn,
         )
 
-        if custom_domain_config.get("is_enabled"):
+        if convert_bool(custom_domain_config.get("is_enabled"), bool):
             amplify_app_distribution.node.default_child.add_property_override(
                 "DistributionConfig.ViewerCertificate.AcmCertificateArn",
                 custom_domain_config.get("cert_arn"),

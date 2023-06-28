@@ -27,37 +27,17 @@ from aws_cdk import aws_wafv2 as wafv2
 from cdk_nag import NagSuppressions
 from constructs import Construct
 
-from egress_backend.components.amplify_waf_addon.amplify_waf_addon import (
-    CustomAmplifyDistribution,
-)
-from egress_backend.components.email_configuration_set.email_configuration_set_cr import (
+from .components.amplify_waf_addon.amplify_waf_addon import CustomAmplifyDistribution
+from .components.email_configuration_set.email_configuration_set_cr import (
     EmailConfigurationSetCustomResource,
 )
-from egress_backend.components.email_configuration_set_event_dest.email_configuration_set_event_dest_cr import (
+from .components.email_configuration_set_event_dest.email_configuration_set_event_dest_cr import (
     EmailConfigurationSetEventDestinationCustomResource,
 )
-from egress_backend.components.email_identity.email_identity_verification_cr import (
+from .components.email_identity.email_identity_verification_cr import (
     EmailIdentityVerificationCustomResource,
 )
-
-
-def convert_bool(s, rtype):
-    """
-    Returns:
-        rtype=str: 'true' or 'false'
-        type=bool: true or false
-    """
-    if rtype not in (str, bool):
-        raise ValueError(f"Invalid return type: {rtype}")
-    if (isinstance(s, str) and s.lower() == "true") or s is True:
-        if rtype == str:
-            return "true"
-        return True
-    if (isinstance(s, str) and s.lower() == "false") or s is False:
-        if rtype == str:
-            return "false"
-        return False
-    raise ValueError(f"Invalid boolean string: {s}")
+from .components.utils import convert_bool
 
 
 class EgressBackendStack(Stack):
@@ -1221,7 +1201,9 @@ class EgressBackendStack(Stack):
         # add additional Idp as per configuration
         supported_idps = ["COGNITO"]
 
-        if self.node.try_get_context(env_id).get("custom_idp").get("is_enabled"):
+        if convert_bool(
+            self.node.try_get_context(env_id).get("custom_idp").get("is_enabled"), bool
+        ):
             cognito.CfnUserPoolIdentityProvider(
                 self,
                 "CustomIdentityProvider",
