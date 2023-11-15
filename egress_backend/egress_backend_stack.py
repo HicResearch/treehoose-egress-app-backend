@@ -1488,9 +1488,9 @@ class EgressBackendStack(Stack):
         )
 
         # Subscribe lambda to SNS topic
-        swb_egress_topic.add_subscription(
-            subscriptions.LambdaSubscription(start_egress_workflow_function)
-        )
+        # swb_egress_topic.add_subscription(
+        #     subscriptions.LambdaSubscription(start_egress_workflow_function)
+        # )
 
         # Grant start execution permission on the step function to start_egress_workflow_function
         data_egress_step_function.grant_start_execution(start_egress_workflow_function)
@@ -1536,79 +1536,79 @@ class EgressBackendStack(Stack):
         # Grant the api lambda permission to send task responses to the step function
         data_egress_step_function.grant_task_response(egress_api_handler)
 
-        lambda_ds = appsync_api.add_lambda_data_source(
-            "lambdaDataSource", egress_api_handler
-        )
+        # lambda_ds = appsync_api.add_lambda_data_source(
+        #     "lambdaDataSource", egress_api_handler
+        # )
 
-        # Define lambda resolvers according to schema defintion
-        lambda_ds.create_resolver(
-            "listRequestsResolver",
-            type_name="Query",
-            field_name="listRequests",
-            request_mapping_template=appsync.MappingTemplate.from_string(
-                """
-            {
-                "version": "2017-02-28",
-                "operation": "Invoke",
-                "payload": {
-                    "field":"listRequests",
-                    "email":$util.toJson($context.identity.claims.email),
-                    "usergroup":$util.toJson($context.identity.claims.get("cognito:groups")),
-                    "arguments": $util.toJson($context.arguments)
-                }
-            }
-            """
-            ),
-            response_mapping_template=appsync.MappingTemplate.from_string(
-                """$util.toJson($context.result)"""
-            ),
-        )
+        # # Define lambda resolvers according to schema defintion
+        # lambda_ds.create_resolver(
+        #     "listRequestsResolver",
+        #     type_name="Query",
+        #     field_name="listRequests",
+        #     request_mapping_template=appsync.MappingTemplate.from_string(
+        #         """
+        #     {
+        #         "version": "2017-02-28",
+        #         "operation": "Invoke",
+        #         "payload": {
+        #             "field":"listRequests",
+        #             "email":$util.toJson($context.identity.claims.email),
+        #             "usergroup":$util.toJson($context.identity.claims.get("cognito:groups")),
+        #             "arguments": $util.toJson($context.arguments)
+        #         }
+        #     }
+        #     """
+        #     ),
+        #     response_mapping_template=appsync.MappingTemplate.from_string(
+        #         """$util.toJson($context.result)"""
+        #     ),
+        # )
 
-        lambda_ds.create_resolver(
-            "updateRequestResolver",
-            type_name="Mutation",
-            field_name="updateRequest",
-            request_mapping_template=appsync.MappingTemplate.from_string(
-                """
-            {
-                "version": "2017-02-28",
-                "operation": "Invoke",
-                "payload": {
-                    "field":"updateRequest",
-                    "email":$util.toJson($context.identity.claims.email),
-                    "usergroup":$util.toJson($context.identity.claims.get("cognito:groups")),
-                    "arguments": $util.toJson($context.arguments)
-                }
-            }
-            """
-            ),
-            response_mapping_template=appsync.MappingTemplate.from_string(
-                """$util.toJson($context.result)"""
-            ),
-        )
+        # lambda_ds.create_resolver(
+        #     "updateRequestResolver",
+        #     type_name="Mutation",
+        #     field_name="updateRequest",
+        #     request_mapping_template=appsync.MappingTemplate.from_string(
+        #         """
+        #     {
+        #         "version": "2017-02-28",
+        #         "operation": "Invoke",
+        #         "payload": {
+        #             "field":"updateRequest",
+        #             "email":$util.toJson($context.identity.claims.email),
+        #             "usergroup":$util.toJson($context.identity.claims.get("cognito:groups")),
+        #             "arguments": $util.toJson($context.arguments)
+        #         }
+        #     }
+        #     """
+        #     ),
+        #     response_mapping_template=appsync.MappingTemplate.from_string(
+        #         """$util.toJson($context.result)"""
+        #     ),
+        # )
 
-        lambda_ds.create_resolver(
-            "downloadDataResolver",
-            type_name="Mutation",
-            field_name="downloadData",
-            request_mapping_template=appsync.MappingTemplate.from_string(
-                """
-            {
-                "version": "2017-02-28",
-                "operation": "Invoke",
-                "payload": {
-                    "field":"downloadData",
-                    "email":$util.toJson($context.identity.claims.email),
-                    "usergroup":$util.toJson($context.identity.claims.get("cognito:groups")),
-                    "arguments": $util.toJson($context.arguments)
-                }
-            }
-            """
-            ),
-            response_mapping_template=appsync.MappingTemplate.from_string(
-                """$util.toJson($context.result)"""
-            ),
-        )
+        # lambda_ds.create_resolver(
+        #     "downloadDataResolver",
+        #     type_name="Mutation",
+        #     field_name="downloadData",
+        #     request_mapping_template=appsync.MappingTemplate.from_string(
+        #         """
+        #     {
+        #         "version": "2017-02-28",
+        #         "operation": "Invoke",
+        #         "payload": {
+        #             "field":"downloadData",
+        #             "email":$util.toJson($context.identity.claims.email),
+        #             "usergroup":$util.toJson($context.identity.claims.get("cognito:groups")),
+        #             "arguments": $util.toJson($context.arguments)
+        #         }
+        #     }
+        #     """
+        #     ),
+        #     response_mapping_template=appsync.MappingTemplate.from_string(
+        #         """$util.toJson($context.result)"""
+        #     ),
+        # )
 
         # Define CDK NAG Rule Suppressions
         NagSuppressions.add_resource_suppressions(
@@ -1931,17 +1931,17 @@ class EgressBackendStack(Stack):
             ],
             True,
         )
-        NagSuppressions.add_resource_suppressions_by_path(
-            self,
-            f"/{self.stack_name}/Egress-Api/lambdaDataSource/ServiceRole/DefaultPolicy/Resource",
-            [
-                {
-                    "id": "AwsSolutions-IAM5",
-                    "reason": "Wildcard permissions are required",
-                }
-            ],
-            True,
-        )
+        # NagSuppressions.add_resource_suppressions_by_path(
+        #     self,
+        #     f"/{self.stack_name}/Egress-Api/lambdaDataSource/ServiceRole/DefaultPolicy/Resource",
+        #     [
+        #         {
+        #             "id": "AwsSolutions-IAM5",
+        #             "reason": "Wildcard permissions are required",
+        #         }
+        #     ],
+        #     True,
+        # )
         NagSuppressions.add_resource_suppressions_by_path(
             self,
             f"/{self.stack_name}/Egress-Api/ApiLogsRole/Resource",
