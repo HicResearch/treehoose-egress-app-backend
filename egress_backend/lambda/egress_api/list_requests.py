@@ -21,6 +21,10 @@ def list_requests():
     ddb_table = ddb.Table(table)
 
     response = ddb_table.scan()
+    data = response["Items"]
+    while response.get("LastEvaluatedKey"):
+        response = ddb_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+        data.extend(response["Items"])
 
-    logger.debug("Succesful database scan of all egress requests")
-    return response["Items"]
+    logger.debug("Successful database scan of all egress requests")
+    return data
