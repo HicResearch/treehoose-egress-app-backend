@@ -9,13 +9,12 @@ from datetime import datetime
 import boto3
 from aws_lambda_powertools import Logger, Tracer
 
-MAX_REQUEST_AGE_DAYS = 90
-
 tracer = Tracer(service="ListRequestsAPI")
 logger = Logger(service="ListRequestsAPI")
 
 ddb = boto3.resource("dynamodb")
 table = os.environ["TABLE"]
+max_request_age_days = int(os.environ["MAX_REQUEST_AGE_DAYS"])
 
 
 def list_requests():
@@ -24,8 +23,10 @@ def list_requests():
     now = datetime.now()
 
     def is_recent(item):
+        if max_request_age_days <= 0:
+            return True
         updated_dt = datetime.strptime(item["updated_dt"], "%Y-%m-%dT%H:%M:%S.%fZ")
-        return (now - updated_dt).days < MAX_REQUEST_AGE_DAYS
+        return (now - updated_dt).days < max_request_age_days
 
     ddb_table = ddb.Table(table)
 
