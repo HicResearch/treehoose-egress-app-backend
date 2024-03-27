@@ -1515,6 +1515,9 @@ class EgressBackendStack(Stack):
                 "REVIEWER_LIST": json.dumps(
                     self.node.try_get_context(env_id).get("egress_reviewer_roles")
                 ),
+                "MAX_REQUEST_AGE_DAYS": self.node.try_get_context(env_id).get(
+                    "max_request_age_days"
+                ),
                 "MAX_DOWNLOADS_ALLOWED": self.node.try_get_context(env_id).get(
                     "max_downloads_allowed"
                 ),

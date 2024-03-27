@@ -32,6 +32,7 @@
       "download_expiry_seconds": "3600",
       "ig_workspaces_account": "",
       "use_s3_access_points": "false",
+      "max_request_age_days": "0",
       "global_web_acl_arn": "<<WAF_ADDON_GLOBAL_WEBACL_ARN>>",
       "regional_web_acl_arn": "<<WAF_ADDON_REGIONAL_WEBACL_ARN>>",
       "custom_domain": {
